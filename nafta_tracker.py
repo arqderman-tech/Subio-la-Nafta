@@ -18,7 +18,7 @@ ARCHIVO_HISTORICO = "data/historico_precios.csv"
 
 # --- CONFIGURACIÓN DE BÚSQUEDA ---
 BUSCAR_PRODUCTO = 'Nafta (súper) entre 92 y 95 Ron'
-BUSCAR_RAZON_SOCIAL = 'SAN MONTE GAS S.A.'
+BUSCAR_RAZON_SOCIAL = 'UNITECPROCOM SA'
 
 # --- Claves de Telegram ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -99,7 +99,7 @@ def main():
             emoji = "🔺" if diff > 0 else "🔻"
             informe_diario = (f"{emoji} CAMBIO DE PRECIO DETECTADO\n"
                               f"--------------------------\n"
-                              f"⛽ Nafta Súper en {empresa_nombre}\n\n"
+                              f"⛽ Nafta Súper en YPF\n\n"
                               f"Precio anterior: ${ultimo_precio:,.2f}\n"
                               f"Precio nuevo: ${precio_hoy:,.2f}\n"
                               f"Variación: {emoji} ${diff:,.2f}\n\n"
