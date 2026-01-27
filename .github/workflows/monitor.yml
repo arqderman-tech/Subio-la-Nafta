@@ -2,44 +2,56 @@ name: Monitor de Precios de Nafta
 
 on:
   schedule:
-    # Ejecutar todos los días a las 8:00 AM hora Argentina (11:00 UTC)
-    - cron: '0 11 * * *'
+    # Ejecutar todos los días a las 09:00 AM hora Argentina (12:00 UTC)
+    - cron: '0 12 * * *'
   workflow_dispatch: # Permite ejecución manual
+
+permissions:
+  contents: write
+
+concurrency:
+  group: monitor-precios-nafta
+  cancel-in-progress: true
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    
-    - name: Run monitor
-      env:
-        X_API_KEY: ${{ secrets.X_API_KEY }}
-        X_API_SECRET: ${{ secrets.X_API_SECRET }}
-        X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-        X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
-        X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: python nafta_tracker.py
-    
-    - name: Commit and push if changes
-      run: |
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        git add data/historico_precios.csv
-        git diff --quiet && git diff --staged --quiet || (git commit -m "📊 Actualización automática de precios - $(date +'%Y-%m-%d %H:%M')" && git push)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run monitor
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python nafta_tracker.py
+
+      - name: Commit and push if changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          git add data/historico_precios.csv
+
+          if git diff --staged --quiet; then
+            echo "No hubo cambios para commitear."
+          else
+            git commit -m "📊 Actualización automática de precios - $(date +'%Y-%m-%d %H:%M')"
+            git push
+          fi
