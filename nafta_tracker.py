@@ -110,7 +110,7 @@ def main():
         else:
             informe_diario = (f"✅ SIN CAMBIOS EN EL PRECIO\n"
                               f"--------------------------\n"
-                              f"⛽ Nafta Súper en {empresa_nombre}\n\n"
+                              f"⛽ Nafta Súper en YPF\n\n"
                               f"Precio actual: ${precio_hoy:,.2f}\n"
                               f"Estado: Estable\n"
                               f"Chequeo: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
