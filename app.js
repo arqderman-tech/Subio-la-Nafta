@@ -32,6 +32,17 @@ function formatDateShort(dateString) {
     }).format(date);
 }
 
+function getCurrentDateTime() {
+    const now = new Date();
+    return new Intl.DateTimeFormat('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    }).format(now);
+}
+
 // Parsear CSV
 function parseCSV(text) {
     const lines = text.trim().split('\n');
@@ -90,6 +101,18 @@ function calculateStats(data) {
     const fechaChequeo = currentData.fecha_chequeo || currentData.fecha_vigencia;
     const fechaVigencia = currentData.fecha_vigencia;
     
+    // Buscar la última vez que cambió el precio
+    let lastPriceChangeDate = fechaVigencia; // Por defecto, la fecha de vigencia del precio actual
+    for (let i = data.length - 2; i >= 0; i--) {
+        const prevPrice = parseFloat(data[i].precio);
+        if (prevPrice !== currentPrice) {
+            // Encontramos un precio diferente, la fecha de vigencia actual es cuando cambió
+            break;
+        }
+        // Si el precio es igual, seguimos buscando hacia atrás
+        lastPriceChangeDate = data[i].fecha_vigencia;
+    }
+    
     // Variación diaria
     let dailyChange = null;
     if (data.length > 1) {
@@ -136,6 +159,7 @@ function calculateStats(data) {
         current: currentPrice,
         currentDate: fechaChequeo,
         vigenciaDate: fechaVigencia,
+        lastPriceChangeDate: lastPriceChangeDate,
         location: `${currentData.localidad}, ${currentData.provincia}`,
         dailyChange,
         monthlyChange,
@@ -155,11 +179,13 @@ function updateUI(stats) {
     // Precio actual
     document.getElementById('current-price').textContent = formatPrice(stats.current);
     
-    // Mostrar fecha de chequeo
-    const updateText = `Última actualización: ${formatDate(stats.currentDate)}`;
+    // CAMBIO: Mostrar fecha y hora actual en el lado izquierdo
+    const currentDateTime = getCurrentDateTime();
+    const updateText = currentDateTime;
     document.getElementById('last-update').textContent = updateText;
     
-    document.getElementById('location').textContent = stats.location;
+    // CAMBIO: Cambiar ubicación a "GRAN BUENOS AIRES"
+    document.getElementById('location').textContent = 'GRAN BUENOS AIRES';
     
     // Variación diaria
     const dailyDiv = document.getElementById('daily-change');
