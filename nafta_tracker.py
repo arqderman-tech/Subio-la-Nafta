@@ -83,7 +83,10 @@ def main():
     reg_actual = df_filtrado.iloc[0]
     precio_hoy = float(reg_actual['precio'])
     empresa_nombre = reg_actual['empresa']
-    fecha_csv = reg_actual['fecha_vigencia'].strftime('%d/%m/%Y %H:%M')
+    fecha_vigencia_precio = reg_actual['fecha_vigencia'].strftime('%d/%m/%Y %H:%M')
+    
+    # CORRECCIÓN: Usar la fecha de HOY para el tracking diario
+    fecha_hoy = datetime.now().date()
 
     informe_diario = ""
     informe_mensual = ""
@@ -92,17 +95,23 @@ def main():
         df_hist = pd.read_csv(ARCHIVO_HISTORICO)
         df_hist['fecha_vigencia'] = pd.to_datetime(df_hist['fecha_vigencia'])
         
-        # CORRECCIÓN: Verificar si ya existe este precio/fecha exacta en el histórico
-        fecha_actual = reg_actual['fecha_vigencia']
-        ya_existe = ((df_hist['precio'] == precio_hoy) & 
-                     (df_hist['fecha_vigencia'] == fecha_actual)).any()
-        
-        if ya_existe:
-            print(f"ℹ️  Este registro ya existe en el histórico. No se agregará duplicado.")
-            print(f"   Precio: ${precio_hoy:,.2f} | Fecha: {fecha_csv}")
-            ultimo_precio = precio_hoy
+        # Agregar columna de fecha de chequeo si no existe
+        if 'fecha_chequeo' not in df_hist.columns:
+            # Para registros viejos, usar la fecha de vigencia como fecha de chequeo
+            df_hist['fecha_chequeo'] = df_hist['fecha_vigencia'].dt.date
         else:
-            ultimo_precio = float(df_hist['precio'].iloc[-1])
+            df_hist['fecha_chequeo'] = pd.to_datetime(df_hist['fecha_chequeo']).dt.date
+        
+        # CORRECCIÓN: Verificar si YA se chequeó HOY
+        ya_chequeado_hoy = (df_hist['fecha_chequeo'] == fecha_hoy).any()
+        
+        if ya_chequeado_hoy:
+            print(f"ℹ️  Ya se realizó un chequeo el día de hoy ({fecha_hoy}).")
+            print(f"   No se agregará registro duplicado.")
+            return
+        
+        # Si no existe, comparar con el último precio registrado
+        ultimo_precio = float(df_hist['precio'].iloc[-1])
         
         # 1. REPORTE DIARIO
         if precio_hoy != ultimo_precio:
@@ -114,24 +123,26 @@ def main():
                               f"Precio anterior: ${ultimo_precio:,.2f}\n"
                               f"Precio nuevo: ${precio_hoy:,.2f}\n"
                               f"Variación: {emoji} ${diff:,.2f}\n\n"
-                              f"Vigencia oficial: {fecha_csv}")
-            
-            # CORRECCIÓN: Solo agregar si NO existe
-            if not ya_existe:
-                nueva_fila = df_filtrado.iloc[[0]].copy()
-                nueva_fila.to_csv(ARCHIVO_HISTORICO, mode='a', index=False, header=False)
-                print(f"✅ Nuevo registro agregado al histórico")
+                              f"Vigencia oficial: {fecha_vigencia_precio}")
         else:
             informe_diario = (f"✅ SIN CAMBIOS EN EL PRECIO\n"
                               f"--------------------------\n"
                               f"⛽ Nafta Súper en YPF\n\n"
                               f"Precio actual: ${precio_hoy:,.2f}\n"
                               f"Estado: Estable\n"
+                              f"Vigencia del precio: {fecha_vigencia_precio}\n"
                               f"Chequeo: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        
+        # Agregar el nuevo registro con la fecha de chequeo de HOY
+        nueva_fila = df_filtrado.iloc[[0]].copy()
+        nueva_fila['fecha_chequeo'] = fecha_hoy
+        nueva_fila.to_csv(ARCHIVO_HISTORICO, mode='a', index=False, header=False)
+        print(f"✅ Nuevo registro agregado: ${precio_hoy:,.2f} | Vigencia precio: {fecha_vigencia_precio} | Chequeo: {fecha_hoy}")
 
         # 2. COMPARATIVA MENSUAL
         fecha_target = datetime.now() - timedelta(days=30)
-        df_mes = df_hist[df_hist['fecha_vigencia'] <= fecha_target]
+        # Usar fecha_chequeo para la comparativa mensual
+        df_mes = df_hist[pd.to_datetime(df_hist['fecha_chequeo']) <= fecha_target]
         
         if not df_mes.empty:
             reg_mes = df_mes.iloc[-1]
@@ -146,7 +157,10 @@ def main():
                                f"Variación nominal: {e_m} ${diff_m:,.2f}\n"
                                f"Variación porcentual: {e_m} {pct_m:.2f}%")
     else:
-        df_filtrado.iloc[[0]].to_csv(ARCHIVO_HISTORICO, index=False)
+        # Primera ejecución: crear archivo con columna fecha_chequeo
+        nueva_fila = df_filtrado.iloc[[0]].copy()
+        nueva_fila['fecha_chequeo'] = fecha_hoy
+        nueva_fila.to_csv(ARCHIVO_HISTORICO, index=False)
         informe_diario = f"🚀 INICIO DE SEGUIMIENTO\n⛽ Nafta Súper en {empresa_nombre}\nPrecio inicial: ${precio_hoy:,.2f}"
         print(f"✅ Archivo histórico creado")
 
