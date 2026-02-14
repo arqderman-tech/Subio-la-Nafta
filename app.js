@@ -216,9 +216,33 @@ function createChart(data, period = 30) {
                     }
                 }
             },
-            scales: {
+      scales: {
                 x: {
-                    ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 12 }
+                    ticks: { 
+                        autoSkip: false, // Obliga a mostrar todas las etiquetas
+                        maxRotation: 90, // Rotación vertical para que no se pisen
+                        minRotation: 90,
+                        font: {
+                            size: 10 // Un poco más chica para que entre todo bien
+                        }
+                    },
+                    grid: {
+                        display: true // Agrega una línea guía para cada fecha
+                    }
+                },
+                y: {
+                    beginAtZero: false,
+                    ticks: {
+                        callback: (value) => `$${formatPrice(value)}`
+                    }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => `Chequeo: ${filteredData[items[0].dataIndex].fecha_chequeo}`
+                    }
                 }
             }
         }
