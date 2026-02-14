@@ -91,7 +91,18 @@ def main():
     if os.path.exists(ARCHIVO_HISTORICO):
         df_hist = pd.read_csv(ARCHIVO_HISTORICO)
         df_hist['fecha_vigencia'] = pd.to_datetime(df_hist['fecha_vigencia'])
-        ultimo_precio = float(df_hist['precio'].iloc[-1])
+        
+        # CORRECCIÓN: Verificar si ya existe este precio/fecha exacta en el histórico
+        fecha_actual = reg_actual['fecha_vigencia']
+        ya_existe = ((df_hist['precio'] == precio_hoy) & 
+                     (df_hist['fecha_vigencia'] == fecha_actual)).any()
+        
+        if ya_existe:
+            print(f"ℹ️  Este registro ya existe en el histórico. No se agregará duplicado.")
+            print(f"   Precio: ${precio_hoy:,.2f} | Fecha: {fecha_csv}")
+            ultimo_precio = precio_hoy
+        else:
+            ultimo_precio = float(df_hist['precio'].iloc[-1])
         
         # 1. REPORTE DIARIO
         if precio_hoy != ultimo_precio:
@@ -105,8 +116,11 @@ def main():
                               f"Variación: {emoji} ${diff:,.2f}\n\n"
                               f"Vigencia oficial: {fecha_csv}")
             
-            nueva_fila = df_filtrado.iloc[[0]].copy()
-            nueva_fila.to_csv(ARCHIVO_HISTORICO, mode='a', index=False, header=False)
+            # CORRECCIÓN: Solo agregar si NO existe
+            if not ya_existe:
+                nueva_fila = df_filtrado.iloc[[0]].copy()
+                nueva_fila.to_csv(ARCHIVO_HISTORICO, mode='a', index=False, header=False)
+                print(f"✅ Nuevo registro agregado al histórico")
         else:
             informe_diario = (f"✅ SIN CAMBIOS EN EL PRECIO\n"
                               f"--------------------------\n"
@@ -134,6 +148,7 @@ def main():
     else:
         df_filtrado.iloc[[0]].to_csv(ARCHIVO_HISTORICO, index=False)
         informe_diario = f"🚀 INICIO DE SEGUIMIENTO\n⛽ Nafta Súper en {empresa_nombre}\nPrecio inicial: ${precio_hoy:,.2f}"
+        print(f"✅ Archivo histórico creado")
 
     if informe_diario:
         enviar_telegram(informe_diario)
