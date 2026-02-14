@@ -32,7 +32,7 @@ function formatDateShort(dateString) {
     }).format(date);
 }
 
-// Parsear CSV - Maneja comas en GeoJSON y limpia comillas
+// Parsear CSV
 function parseCSV(text) {
     const lines = text.trim().split('\n');
     const headers = lines[0].split(',').map(h => h.trim());
@@ -74,15 +74,12 @@ function parseCSV(text) {
     return data;
 }
 
-// Obtener datos
 async function fetchData() {
     try {
         const response = await fetch(CSV_URL);
         if (!response.ok) throw new Error('Error al cargar datos');
         const text = await response.text();
         const data = parseCSV(text);
-        
-        // ORDENADO POR FECHA DE CHEQUEO
         data.sort((a, b) => new Date(a.fecha_chequeo) - new Date(b.fecha_chequeo));
         return data;
     } catch (error) {
@@ -91,90 +88,79 @@ async function fetchData() {
     }
 }
 
-// Calcular estadísticas
+// LÓGICA DINÁMICA POR AÑO EN CURSO
 function calculateStats(data) {
     if (!data || data.length === 0) return null;
-    const currentData = data[data.length - 1];
+
+    const currentYear = new Date().getFullYear();
+
+    // Filtrar datos del año actual
+    const dataCurrentYear = data.filter(d => {
+        const date = new Date(d.fecha_chequeo);
+        return date.getFullYear() === currentYear;
+    });
+
+    // Fallback: si no hay datos del año actual, mostramos todo el histórico
+    const baseData = dataCurrentYear.length > 0 ? dataCurrentYear : data;
+
+    const currentData = baseData[baseData.length - 1];
     const currentPrice = parseFloat(currentData.precio);
-    
-    let dailyChange = 0;
-    if (data.length > 1) {
-        const previousPrice = parseFloat(data[data.length - 2].precio);
-        dailyChange = currentPrice - previousPrice;
-    }
-    
-    let monthlyChange = 0;
-    let monthlyPercent = 0;
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    // Filtro mensual basado en chequeo
-    const monthlyData = data.filter(d => new Date(d.fecha_chequeo) <= thirtyDaysAgo);
-    if (monthlyData.length > 0) {
-        const monthlyPrice = parseFloat(monthlyData[monthlyData.length - 1].precio);
-        monthlyChange = currentPrice - monthlyPrice;
-        monthlyPercent = (monthlyChange / monthlyPrice) * 100;
-    }
-    
-    const prices = data.map(d => parseFloat(d.precio));
+    const prices = baseData.map(d => parseFloat(d.precio));
+
     const maxPrice = Math.max(...prices);
     const minPrice = Math.min(...prices);
-    const maxData = data.find(d => parseFloat(d.precio) === maxPrice);
-    const minData = data.find(d => parseFloat(d.precio) === minPrice);
-    
-    const firstPrice = parseFloat(data[0].precio);
-    const totalChange = currentPrice - firstPrice;
-    const totalPercent = (totalChange / firstPrice) * 100;
-    
+    const maxData = baseData.find(d => parseFloat(d.precio) === maxPrice);
+    const minData = baseData.find(d => parseFloat(d.precio) === minPrice);
+
+    const firstPriceYear = parseFloat(baseData[0].precio);
+    const totalChange = currentPrice - firstPriceYear;
+    const totalPercent = (totalChange / firstPriceYear) * 100;
+
     return {
         current: currentPrice,
         currentDate: currentData.fecha_chequeo,
         location: `${currentData.localidad}, ${currentData.provincia}`,
-        dailyChange,
-        monthlyChange,
-        monthlyPercent,
         maxPrice,
         maxDate: maxData.fecha_chequeo,
         minPrice,
         minDate: minData.fecha_chequeo,
         totalChange,
         totalPercent,
-        totalUpdates: data.length
+        totalUpdates: baseData.length,
+        year: currentYear
     };
 }
 
-// Actualizar UI
 function updateUI(stats) {
+    // Actualizar Títulos de los cuadros para que reflejen el año
+    const labels = document.querySelectorAll('.stat-label'); 
+    // Nota: Asegúrate que tus etiquetas de texto tengan la clase 'stat-label' o usa los IDs de tus contenedores
+    if (labels.length >= 3) {
+        labels[0].textContent = `VALOR MÁXIMO DEL ${stats.year}`;
+        labels[1].textContent = `VALOR MÍNIMO DEL ${stats.year}`;
+        labels[2].textContent = `VARIACIÓN TOTAL EN EL ${stats.year}`;
+    }
+
+    // Valores de los cuadros
     document.getElementById('current-price').textContent = formatPrice(stats.current);
     document.getElementById('last-update').textContent = formatDate(stats.currentDate);
     document.getElementById('location').textContent = stats.location;
     
-    const dailyDiv = document.getElementById('daily-change');
-    const isPosD = stats.dailyChange > 0;
-    const iconD = stats.dailyChange === 0 ? '➖' : (isPosD ? '🔺' : '🔻');
-    dailyDiv.innerHTML = `<div class="change-amount ${stats.dailyChange === 0 ? 'neutral' : (isPosD ? 'positive' : 'negative')}">
-        <span class="trend-icon">${iconD}</span><span>$${formatPrice(Math.abs(stats.dailyChange))}</span>
-    </div><div class="change-status">${stats.dailyChange === 0 ? 'Sin cambios' : (isPosD ? 'Subió' : 'Bajó')}</div>`;
-    
-    const monthlyDiv = document.getElementById('monthly-change');
-    const isPosM = stats.monthlyChange > 0;
-    monthlyDiv.innerHTML = `<div class="change-amount ${stats.monthlyChange === 0 ? 'neutral' : (isPosM ? 'positive' : 'negative')}">
-        <span class="trend-icon">${stats.monthlyChange === 0 ? '➖' : (isPosM ? '🔺' : '🔻')}</span><span>$${formatPrice(Math.abs(stats.monthlyChange))}</span>
-    </div><div class="change-percent">${Math.abs(stats.monthlyPercent).toFixed(2)}%</div>`;
-    
     document.getElementById('max-price').textContent = `$${formatPrice(stats.maxPrice)}`;
     document.getElementById('max-date').textContent = formatDateShort(stats.maxDate);
+    
     document.getElementById('min-price').textContent = `$${formatPrice(stats.minPrice)}`;
     document.getElementById('min-date').textContent = formatDateShort(stats.minDate);
     
     const totalChangeEl = document.getElementById('total-change');
-    totalChangeEl.className = `stat-value ${stats.totalChange >= 0 ? 'positive' : 'negative'}`;
-    totalChangeEl.textContent = `${stats.totalChange >= 0 ? '🔺' : '🔻'} $${formatPrice(Math.abs(stats.totalChange))}`;
+    const isPosT = stats.totalChange >= 0;
+    totalChangeEl.className = `stat-value ${isPosT ? 'negative' : 'positive'}`;
+    totalChangeEl.textContent = `${isPosT ? '🔺' : '🔻'} $${formatPrice(Math.abs(stats.totalChange))}`;
     document.getElementById('total-change-percent').textContent = `${Math.abs(stats.totalPercent).toFixed(2)}%`;
+    
     document.getElementById('total-updates').textContent = stats.totalUpdates;
 }
 
-// Crear gráfico - CORREGIDO PARA USAR FECHA_CHEQUEO
 function createChart(data, period = 30) {
     const canvas = document.getElementById('priceChart');
     if (!canvas) return;
@@ -187,7 +173,6 @@ function createChart(data, period = 30) {
         filteredData = data.filter(d => new Date(d.fecha_chequeo) >= cutoff);
     }
     
-    // Etiquetas basadas en fecha_chequeo
     const labels = filteredData.map(d => formatDateShort(d.fecha_chequeo));
     const prices = filteredData.map(d => parseFloat(d.precio));
     
@@ -209,41 +194,12 @@ function createChart(data, period = 30) {
         options: { 
             responsive: true, 
             maintainAspectRatio: false,
-            plugins: {
-                tooltip: {
-                    callbacks: {
-                        title: (items) => `Chequeo: ${filteredData[items[0].dataIndex].fecha_chequeo}`
-                    }
-                }
-            },
-      scales: {
-                x: {
-                    ticks: { 
-                        autoSkip: false, // Obliga a mostrar todas las etiquetas
-                        maxRotation: 90, // Rotación vertical para que no se pisen
-                        minRotation: 90,
-                        font: {
-                            size: 10 // Un poco más chica para que entre todo bien
-                        }
-                    },
-                    grid: {
-                        display: true // Agrega una línea guía para cada fecha
-                    }
-                },
-                y: {
-                    beginAtZero: false,
-                    ticks: {
-                        callback: (value) => `$${formatPrice(value)}`
-                    }
-                }
+            scales: {
+                x: { ticks: { autoSkip: true, maxTicksLimit: 10 } },
+                y: { ticks: { callback: (value) => `$${formatPrice(value)}` } }
             },
             plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        title: (items) => `Chequeo: ${filteredData[items[0].dataIndex].fecha_chequeo}`
-                    }
-                }
+                legend: { display: false }
             }
         }
     });
