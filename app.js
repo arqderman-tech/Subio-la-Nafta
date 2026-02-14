@@ -65,7 +65,7 @@ async function fetchData() {
         const text = await response.text();
         const data = parseCSV(text);
         
-        // CORRECCIÓN: Ordenar por fecha_chequeo si existe, sino por fecha_vigencia
+        // Ordenar por fecha_chequeo si existe, sino por fecha_vigencia
         data.sort((a, b) => {
             const fechaA = new Date(a.fecha_chequeo || a.fecha_vigencia);
             const fechaB = new Date(b.fecha_chequeo || b.fecha_vigencia);
@@ -86,7 +86,7 @@ function calculateStats(data) {
     const currentData = data[data.length - 1];
     const currentPrice = parseFloat(currentData.precio);
     
-    // CORRECCIÓN: Usar fecha_chequeo para mostrar cuándo se registró
+    // Usar fecha_chequeo para mostrar cuándo se registró
     const fechaChequeo = currentData.fecha_chequeo || currentData.fecha_vigencia;
     const fechaVigencia = currentData.fecha_vigencia;
     
@@ -103,7 +103,7 @@ function calculateStats(data) {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    // CORRECCIÓN: Filtrar por fecha_chequeo si existe
+    // Filtrar por fecha_chequeo si existe
     const monthlyData = data.filter(d => {
         const fecha = new Date(d.fecha_chequeo || d.fecha_vigencia);
         return fecha <= thirtyDaysAgo;
@@ -123,7 +123,7 @@ function calculateStats(data) {
     const maxData = data.find(d => parseFloat(d.precio) === maxPrice);
     const minData = data.find(d => parseFloat(d.precio) === minPrice);
     
-    // CORRECCIÓN: Usar fecha_chequeo para las estadísticas
+    // Usar fecha_chequeo para las estadísticas
     const maxDate = maxData.fecha_chequeo || maxData.fecha_vigencia;
     const minDate = minData.fecha_chequeo || minData.fecha_vigencia;
     
@@ -155,7 +155,7 @@ function updateUI(stats) {
     // Precio actual
     document.getElementById('current-price').textContent = formatPrice(stats.current);
     
-    // CORRECCIÓN: Mostrar fecha de chequeo Y fecha de vigencia del precio
+    // Mostrar fecha de chequeo
     const updateText = `Última actualización: ${formatDate(stats.currentDate)}`;
     document.getElementById('last-update').textContent = updateText;
     
@@ -223,14 +223,14 @@ function createChart(data, period = 30) {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - period);
         
-        // CORRECCIÓN: Usar fecha_chequeo para filtrar
+        // Usar fecha_chequeo para filtrar
         filteredData = data.filter(d => {
             const fecha = new Date(d.fecha_chequeo || d.fecha_vigencia);
             return fecha >= cutoffDate;
         });
     }
     
-    // CORRECCIÓN: Usar fecha_chequeo para las etiquetas del gráfico
+    // Usar fecha_chequeo para las etiquetas del gráfico
     const labels = filteredData.map(d => {
         const fecha = d.fecha_chequeo || d.fecha_vigencia;
         return formatDateShort(fecha);
