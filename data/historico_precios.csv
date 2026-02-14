@@ -1,4 +1,4 @@
-indice_tiempo,idempresa,cuit,empresa,direccion,localidad,provincia,region,idproducto,producto,idtipohorario,tipohorario,precio,fecha_vigencia,idempresabandera,empresabandera,latitud,longitud,geojson,%_variacion
+indice_tiempo,idempresa,cuit,empresa,direccion,localidad,provincia,region,idproducto,producto,idtipohorario,tipohorario,precio,fecha_vigencia,idempresabandera,empresabandera,latitud,longitud,geojson,%_variacion,fecha_chequeo
 2025-10,10667,30-71485936-2,UNITECPROCOM SA,AV EVA PERON 7501,FLORENCIO VARELA,BUENOS AIRES,,2,Nafta (súper) entre 92 y 95 Ron,2,Diurno,1522,2025-10-22 06:16:00,2,YPF,-34.85086,-58.27908,"{""type"":""Point"",""coordinates"":[-58.27908,-34.85086]}",0.0
 2025-10,10667,30-71485936-2,UNITECPROCOM SA,AV EVA PERON 7501,FLORENCIO VARELA,BUENOS AIRES,,2,Nafta (súper) entre 92 y 95 Ron,2,Diurno,1520,2025-10-23 06:41:00,2,YPF,-34.85086,-58.27908,"{""type"":""Point"",""coordinates"":[-58.27908,-34.85086]}",-0.13
 2025-10,10667,30-71485936-2,UNITECPROCOM SA,AV EVA PERON 7501,FLORENCIO VARELA,BUENOS AIRES,,2,Nafta (súper) entre 92 y 95 Ron,2,Diurno,1516,2025-10-27 06:07:00,2,YPF,-34.85086,-58.27908,"{""type"":""Point"",""coordinates"":[-58.27908,-34.85086]}",-0.26
@@ -40,3 +40,4 @@ indice_tiempo,idempresa,cuit,empresa,direccion,localidad,provincia,region,idprod
 2026-02,10667,30-71485936-2,UNITECPROCOM SA,AV EVA PERON 7501,FLORENCIO VARELA,BUENOS AIRES,,2,Nafta (súper) entre 92 y 95 Ron,2,Diurno,1656,2026-02-03 06:10:00,2,YPF,-34.85086,-58.27908,"{""type"":""Point"",""coordinates"":[-58.27908,-34.85086]}"
 2026-02,10667,30-71485936-2,UNITECPROCOM SA,AV EVA PERON 7501,FLORENCIO VARELA,BUENOS AIRES,,2,Nafta (súper) entre 92 y 95 Ron,2,Diurno,1663,2026-02-05 06:35:00,2,YPF,-34.85086,-58.27908,"{""type"":""Point"",""coordinates"":[-58.27908,-34.85086]}"
 2026-02,10667,30-71485936-2,UNITECPROCOM SA,AV EVA PERON 7501,FLORENCIO VARELA,BUENOS AIRES,,2,Nafta (súper) entre 92 y 95 Ron,2,Diurno,1668,2026-02-07 11:01:00,2,YPF,-34.85086,-58.27908,"{""type"":""Point"",""coordinates"":[-58.27908,-34.85086]}"
+
