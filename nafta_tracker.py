@@ -85,7 +85,7 @@ def main():
     empresa_nombre = reg_actual['empresa']
     fecha_vigencia_precio = reg_actual['fecha_vigencia'].strftime('%d/%m/%Y %H:%M')
     
-    # CORRECCIÓN: Usar la fecha de HOY para el tracking diario
+    # Usar la fecha de HOY para el tracking
     fecha_hoy = datetime.now().date()
 
     informe_diario = ""
@@ -97,12 +97,11 @@ def main():
         
         # Agregar columna de fecha de chequeo si no existe
         if 'fecha_chequeo' not in df_hist.columns:
-            # Para registros viejos, usar la fecha de vigencia como fecha de chequeo
             df_hist['fecha_chequeo'] = df_hist['fecha_vigencia'].dt.date
         else:
             df_hist['fecha_chequeo'] = pd.to_datetime(df_hist['fecha_chequeo']).dt.date
         
-        # CORRECCIÓN: Verificar si YA se chequeó HOY
+        # Verificar si YA se chequeó HOY
         ya_chequeado_hoy = (df_hist['fecha_chequeo'] == fecha_hoy).any()
         
         if ya_chequeado_hoy:
@@ -140,13 +139,18 @@ def main():
         print(f"✅ Nuevo registro agregado: ${precio_hoy:,.2f} | Vigencia precio: {fecha_vigencia_precio} | Chequeo: {fecha_hoy}")
 
         # 2. COMPARATIVA MENSUAL
-        fecha_target = datetime.now() - timedelta(days=30)
-        # Usar fecha_chequeo para la comparativa mensual
-        df_mes = df_hist[pd.to_datetime(df_hist['fecha_chequeo']) <= fecha_target]
+        # CORRECCIÓN: Usar fecha_chequeo en lugar de fecha_vigencia
+        fecha_hace_30_dias = fecha_hoy - timedelta(days=30)
+        
+        # Filtrar registros de hace 30 días o antes (basado en fecha_chequeo)
+        df_mes = df_hist[df_hist['fecha_chequeo'] <= fecha_hace_30_dias]
         
         if not df_mes.empty:
+            # Tomar el registro más cercano a hace 30 días (el último del filtro)
             reg_mes = df_mes.iloc[-1]
             precio_mes = float(reg_mes['precio'])
+            fecha_mes = reg_mes['fecha_chequeo']
+            
             diff_m = precio_hoy - precio_mes
             pct_m = (diff_m / precio_mes) * 100
             e_m = "🔺" if diff_m > 0 else "🔻"
@@ -156,6 +160,13 @@ def main():
                                f"⛽ Precio hace 30 días: ${precio_mes:,.2f}\n"
                                f"Variación nominal: {e_m} ${diff_m:,.2f}\n"
                                f"Variación porcentual: {e_m} {pct_m:.2f}%")
+            
+            print(f"📊 Comparativa mensual:")
+            print(f"   Precio hace 30 días ({fecha_mes}): ${precio_mes:,.2f}")
+            print(f"   Precio hoy ({fecha_hoy}): ${precio_hoy:,.2f}")
+            print(f"   Diferencia: ${diff_m:,.2f} ({pct_m:.2f}%)")
+        else:
+            print(f"ℹ️  No hay datos de hace 30 días o más para comparar")
     else:
         # Primera ejecución: crear archivo con columna fecha_chequeo
         nueva_fila = df_filtrado.iloc[[0]].copy()
