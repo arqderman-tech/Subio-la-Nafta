@@ -5,7 +5,7 @@ const CSV_URL = 'https://raw.githubusercontent.com/arqderman-tech/Subio-la-Nafta
 let allData = [];
 let chart = null;
 
-// Utilidades
+// --- UTILIDADES ---
 function formatPrice(price) {
     return new Intl.NumberFormat('es-AR', {
         minimumFractionDigits: 2,
@@ -32,7 +32,7 @@ function formatDateShort(dateString) {
     }).format(date);
 }
 
-// Parsear CSV
+// --- PARSEAR CSV ---
 function parseCSV(text) {
     const lines = text.trim().split('\n');
     const headers = lines[0].split(',').map(h => h.trim());
@@ -74,12 +74,14 @@ function parseCSV(text) {
     return data;
 }
 
+// --- FETCH DATA ---
 async function fetchData() {
     try {
         const response = await fetch(CSV_URL);
         if (!response.ok) throw new Error('Error al cargar datos');
         const text = await response.text();
         const data = parseCSV(text);
+        // Ordenar por fecha de chequeo
         data.sort((a, b) => new Date(a.fecha_chequeo) - new Date(b.fecha_chequeo));
         return data;
     } catch (error) {
@@ -88,33 +90,55 @@ async function fetchData() {
     }
 }
 
-// LÓGICA DINÁMICA POR AÑO EN CURSO
+// --- LÓGICA DE CÁLCULOS (ANUAL, DIARIO Y MENSUAL) ---
 function calculateStats(data) {
     if (!data || data.length === 0) return null;
 
     const currentYear = new Date().getFullYear();
+    const lastIdx = data.length - 1;
+    const currentData = data[lastIdx];
+    const currentPrice = parseFloat(currentData.precio);
 
-    // Filtrar datos del año actual
+    // 1. Filtrar datos del año actual para Máx/Mín/Total Anual
     const dataCurrentYear = data.filter(d => {
         const date = new Date(d.fecha_chequeo);
         return date.getFullYear() === currentYear;
     });
-
-    // Fallback: si no hay datos del año actual, mostramos todo el histórico
     const baseData = dataCurrentYear.length > 0 ? dataCurrentYear : data;
 
-    const currentData = baseData[baseData.length - 1];
-    const currentPrice = parseFloat(currentData.precio);
+    // --- CÁLCULOS ANUALES (Lo que ya funcionaba) ---
     const prices = baseData.map(d => parseFloat(d.precio));
-
     const maxPrice = Math.max(...prices);
     const minPrice = Math.min(...prices);
     const maxData = baseData.find(d => parseFloat(d.precio) === maxPrice);
     const minData = baseData.find(d => parseFloat(d.precio) === minPrice);
-
     const firstPriceYear = parseFloat(baseData[0].precio);
     const totalChange = currentPrice - firstPriceYear;
     const totalPercent = (totalChange / firstPriceYear) * 100;
+
+    // --- CÁLCULO VARIACIÓN DIARIA (CORRECCIÓN) ---
+    let dailyChange = 0;
+    let dailyPercent = 0;
+    if (data.length > 1) {
+        const prevPrice = parseFloat(data[lastIdx - 1].precio);
+        dailyChange = currentPrice - prevPrice;
+        dailyPercent = (dailyChange / prevPrice) * 100;
+    }
+
+    // --- CÁLCULO VARIACIÓN MENSUAL (CORRECCIÓN) ---
+    const dateToday = new Date(currentData.fecha_chequeo);
+    const thirtyDaysAgo = new Date(dateToday);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    // Buscamos el precio más antiguo dentro de los últimos 30 días
+    const price30DaysAgoData = data.find(d => new Date(d.fecha_chequeo) >= thirtyDaysAgo);
+    let monthlyChange = 0;
+    let monthlyPercent = 0;
+    if (price30DaysAgoData) {
+        const oldPrice = parseFloat(price30DaysAgoData.precio);
+        monthlyChange = currentPrice - oldPrice;
+        monthlyPercent = (monthlyChange / oldPrice) * 100;
+    }
 
     return {
         current: currentPrice,
@@ -126,22 +150,28 @@ function calculateStats(data) {
         minDate: minData.fecha_chequeo,
         totalChange,
         totalPercent,
+        dailyChange,
+        dailyPercent,
+        monthlyChange,
+        monthlyPercent,
         totalUpdates: baseData.length,
         year: currentYear
     };
 }
 
+// --- ACTUALIZACIÓN DE LA INTERFAZ ---
 function updateUI(stats) {
-    // Actualizar Títulos de los cuadros para que reflejen el año
+    if (!stats) return;
+
+    // Actualizar Títulos de los cuadros según el año
     const labels = document.querySelectorAll('.stat-label'); 
-    // Nota: Asegúrate que tus etiquetas de texto tengan la clase 'stat-label' o usa los IDs de tus contenedores
     if (labels.length >= 3) {
         labels[0].textContent = `VALOR MÁXIMO DEL ${stats.year}`;
         labels[1].textContent = `VALOR MÍNIMO DEL ${stats.year}`;
         labels[2].textContent = `VARIACIÓN TOTAL EN EL ${stats.year}`;
     }
 
-    // Valores de los cuadros
+    // Cuadros Principales Anuales
     document.getElementById('current-price').textContent = formatPrice(stats.current);
     document.getElementById('last-update').textContent = formatDate(stats.currentDate);
     document.getElementById('location').textContent = stats.location;
@@ -159,8 +189,29 @@ function updateUI(stats) {
     document.getElementById('total-change-percent').textContent = `${Math.abs(stats.totalPercent).toFixed(2)}%`;
     
     document.getElementById('total-updates').textContent = stats.totalUpdates;
+
+    // NUEVO: VARIACIÓN DIARIA
+    const dailyValEl = document.getElementById('daily-val');
+    const dailyPercEl = document.getElementById('daily-perc');
+    if (dailyValEl) {
+        const isPosD = stats.dailyChange >= 0;
+        dailyValEl.className = `stat-value ${isPosD ? 'negative' : 'positive'}`;
+        dailyValEl.textContent = `${isPosD ? '🔺' : '🔻'} $${formatPrice(Math.abs(stats.dailyChange))}`;
+        dailyPercEl.textContent = `${Math.abs(stats.dailyPercent).toFixed(2)}%`;
+    }
+
+    // NUEVO: VARIACIÓN MENSUAL
+    const monthlyValEl = document.getElementById('monthly-val');
+    const monthlyPercEl = document.getElementById('monthly-perc');
+    if (monthlyValEl) {
+        const isPosM = stats.monthlyChange >= 0;
+        monthlyValEl.className = `stat-value ${isPosM ? 'negative' : 'positive'}`;
+        monthlyValEl.textContent = `${isPosM ? '🔺' : '🔻'} $${formatPrice(Math.abs(stats.monthlyChange))}`;
+        monthlyPercEl.textContent = `${Math.abs(stats.monthlyPercent).toFixed(2)}%`;
+    }
 }
 
+// --- GRÁFICO ---
 function createChart(data, period = 30) {
     const canvas = document.getElementById('priceChart');
     if (!canvas) return;
@@ -215,6 +266,7 @@ function setupChartControls() {
     });
 }
 
+// --- INICIALIZACIÓN ---
 async function init() {
     const loading = document.getElementById('loading');
     const mainContent = document.getElementById('main-content');
@@ -226,12 +278,14 @@ async function init() {
         updateUI(stats);
         createChart(allData, 30);
         setupChartControls();
-        loading.style.display = 'none';
-        mainContent.style.display = 'block';
+        if(loading) loading.style.display = 'none';
+        if(mainContent) mainContent.style.display = 'block';
     } catch (err) {
-        loading.style.display = 'none';
-        error.style.display = 'block';
-        error.innerHTML = `<p>⚠️ Error: ${err.message}</p>`;
+        if(loading) loading.style.display = 'none';
+        if(error) {
+            error.style.display = 'block';
+            error.innerHTML = `<p>⚠️ Error: ${err.message}</p>`;
+        }
     }
 }
 
