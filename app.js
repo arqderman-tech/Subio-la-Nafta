@@ -65,8 +65,12 @@ async function fetchData() {
         const text = await response.text();
         const data = parseCSV(text);
         
-        // Ordenar por fecha
-        data.sort((a, b) => new Date(a.fecha_vigencia) - new Date(b.fecha_vigencia));
+        // CORRECCIÓN: Ordenar por fecha_chequeo si existe, sino por fecha_vigencia
+        data.sort((a, b) => {
+            const fechaA = new Date(a.fecha_chequeo || a.fecha_vigencia);
+            const fechaB = new Date(b.fecha_chequeo || b.fecha_vigencia);
+            return fechaA - fechaB;
+        });
         
         return data;
     } catch (error) {
@@ -82,6 +86,10 @@ function calculateStats(data) {
     const currentData = data[data.length - 1];
     const currentPrice = parseFloat(currentData.precio);
     
+    // CORRECCIÓN: Usar fecha_chequeo para mostrar cuándo se registró
+    const fechaChequeo = currentData.fecha_chequeo || currentData.fecha_vigencia;
+    const fechaVigencia = currentData.fecha_vigencia;
+    
     // Variación diaria
     let dailyChange = null;
     if (data.length > 1) {
@@ -89,13 +97,18 @@ function calculateStats(data) {
         dailyChange = currentPrice - previousPrice;
     }
     
-    // Variación mensual (30 días atrás)
+    // Variación mensual (30 días atrás basado en fecha_chequeo)
     let monthlyChange = null;
     let monthlyPercent = null;
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    const monthlyData = data.filter(d => new Date(d.fecha_vigencia) <= thirtyDaysAgo);
+    // CORRECCIÓN: Filtrar por fecha_chequeo si existe
+    const monthlyData = data.filter(d => {
+        const fecha = new Date(d.fecha_chequeo || d.fecha_vigencia);
+        return fecha <= thirtyDaysAgo;
+    });
+    
     if (monthlyData.length > 0) {
         const monthlyPrice = parseFloat(monthlyData[monthlyData.length - 1].precio);
         monthlyChange = currentPrice - monthlyPrice;
@@ -110,6 +123,10 @@ function calculateStats(data) {
     const maxData = data.find(d => parseFloat(d.precio) === maxPrice);
     const minData = data.find(d => parseFloat(d.precio) === minPrice);
     
+    // CORRECCIÓN: Usar fecha_chequeo para las estadísticas
+    const maxDate = maxData.fecha_chequeo || maxData.fecha_vigencia;
+    const minDate = minData.fecha_chequeo || minData.fecha_vigencia;
+    
     // Variación total
     const firstPrice = parseFloat(data[0].precio);
     const totalChange = currentPrice - firstPrice;
@@ -117,15 +134,16 @@ function calculateStats(data) {
     
     return {
         current: currentPrice,
-        currentDate: currentData.fecha_vigencia,
+        currentDate: fechaChequeo,
+        vigenciaDate: fechaVigencia,
         location: `${currentData.localidad}, ${currentData.provincia}`,
         dailyChange,
         monthlyChange,
         monthlyPercent,
         maxPrice,
-        maxDate: maxData.fecha_vigencia,
+        maxDate: maxDate,
         minPrice,
-        minDate: minData.fecha_vigencia,
+        minDate: minDate,
         totalChange,
         totalPercent,
         totalUpdates: data.length
@@ -136,7 +154,11 @@ function calculateStats(data) {
 function updateUI(stats) {
     // Precio actual
     document.getElementById('current-price').textContent = formatPrice(stats.current);
-    document.getElementById('last-update').textContent = formatDate(stats.currentDate);
+    
+    // CORRECCIÓN: Mostrar fecha de chequeo Y fecha de vigencia del precio
+    const updateText = `Última actualización: ${formatDate(stats.currentDate)}`;
+    document.getElementById('last-update').textContent = updateText;
+    
     document.getElementById('location').textContent = stats.location;
     
     // Variación diaria
@@ -200,10 +222,19 @@ function createChart(data, period = 30) {
     if (period !== 'all') {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - period);
-        filteredData = data.filter(d => new Date(d.fecha_vigencia) >= cutoffDate);
+        
+        // CORRECCIÓN: Usar fecha_chequeo para filtrar
+        filteredData = data.filter(d => {
+            const fecha = new Date(d.fecha_chequeo || d.fecha_vigencia);
+            return fecha >= cutoffDate;
+        });
     }
     
-    const labels = filteredData.map(d => formatDateShort(d.fecha_vigencia));
+    // CORRECCIÓN: Usar fecha_chequeo para las etiquetas del gráfico
+    const labels = filteredData.map(d => {
+        const fecha = d.fecha_chequeo || d.fecha_vigencia;
+        return formatDateShort(fecha);
+    });
     const prices = filteredData.map(d => parseFloat(d.precio));
     
     // Destruir gráfico anterior si existe
