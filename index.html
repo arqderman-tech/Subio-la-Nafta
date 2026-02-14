@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>¿Subió la Nafta? | Monitor de Precios Argentina</title>
+    <meta name="description" content="Seguimiento diario del precio de la Nafta Super en Argentina. Actualización automática desde datos oficiales.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="logo">
+                    <span class="emoji">⛽</span>
+                    <span class="logo-text">¿Subió la Nafta?</span>
+                </h1>
+                <p class="subtitle">Monitor en tiempo real del precio de Nafta Super en Argentina</p>
+            </div>
+            <div class="social-links">
+                <a href="https://x.com/lanaftasubio" target="_blank" rel="noopener" class="social-link">
+                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                    </svg>
+                    @lanaftasubio
+                </a>
+                <a href="https://github.com/arqderman-tech/Subio-la-Nafta" target="_blank" rel="noopener" class="social-link">
+                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
+                    </svg>
+                    GitHub
+                </a>
+            </div>
+        </header>
+
+        <!-- Loading State -->
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Cargando datos...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error" class="error" style="display: none;">
+            <p>⚠️ Error al cargar los datos. Por favor, intenta nuevamente.</p>
+        </div>
+
+        <!-- Main Content -->
+        <main id="main-content" style="display: none;">
+            <!-- Price Cards -->
+            <div class="cards-grid">
+                <!-- Current Price Card -->
+                <div class="card card-primary">
+                    <div class="card-header">
+                        <h2>Precio Actual</h2>
+                        <span class="update-time" id="last-update"></span>
+                    </div>
+                    <div class="price-display">
+                        <span class="currency">$</span>
+                        <span class="price" id="current-price">-</span>
+                    </div>
+                    <div class="location">
+                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                        </svg>
+                        <span id="location"></span>
+                    </div>
+                </div>
+
+                <!-- Daily Change Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Variación Diaria</h2>
+                        <span class="badge" id="daily-badge">Hoy</span>
+                    </div>
+                    <div class="change-display" id="daily-change">
+                        <div class="change-amount">
+                            <span class="trend-icon">-</span>
+                            <span>$0.00</span>
+                        </div>
+                        <div class="change-status">Sin datos</div>
+                    </div>
+                </div>
+
+                <!-- Monthly Change Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Variación Mensual</h2>
+                        <span class="badge" id="monthly-badge">30 días</span>
+                    </div>
+                    <div class="change-display" id="monthly-change">
+                        <div class="change-amount">
+                            <span class="trend-icon">-</span>
+                            <span>$0.00</span>
+                        </div>
+                        <div class="change-percent">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart Section -->
+            <div class="card chart-card">
+                <div class="card-header">
+                    <h2>Evolución del Precio</h2>
+                    <div class="chart-controls">
+                        <button class="chart-btn active" data-period="30">30D</button>
+                        <button class="chart-btn" data-period="60">60D</button>
+                        <button class="chart-btn" data-period="all">Todo</button>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="priceChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Precio Máximo</div>
+                    <div class="stat-value" id="max-price">$-</div>
+                    <div class="stat-date" id="max-date">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Precio Mínimo</div>
+                    <div class="stat-value" id="min-price">$-</div>
+                    <div class="stat-date" id="min-date">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Variación Total</div>
+                    <div class="stat-value" id="total-change">-</div>
+                    <div class="stat-date" id="total-change-percent">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Actualizaciones</div>
+                    <div class="stat-value" id="total-updates">-</div>
+                    <div class="stat-date">registros</div>
+                </div>
+            </div>
+
+            <!-- Footer Info -->
+            <div class="info-section">
+                <div class="info-card">
+                    <h3>📊 Sobre los Datos</h3>
+                    <p>Los datos se obtienen del <strong>Portal de Datos Abiertos del Ministerio de Energía de Argentina</strong> y se actualizan automáticamente cada día.</p>
+                    <p>Se monitorea el precio de <strong>Nafta Super (entre 92 y 95 RON)</strong> en estaciones YPF de la provincia de Buenos Aires.</p>
+                </div>
+                <div class="info-card">
+                    <h3>🤖 Automatización</h3>
+                    <p>Este proyecto utiliza <strong>GitHub Actions</strong> para verificar cambios de precio diariamente y publicar automáticamente en Twitter cuando detecta variaciones.</p>
+                    <p>El código es <strong>open source</strong> y está disponible en GitHub para que cualquiera pueda auditarlo o contribuir.</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>
+                Datos oficiales del 
+                <a href="http://datos.energia.gob.ar/" target="_blank" rel="noopener">Ministerio de Energía</a> • 
+                Hecho con ❤️ en Argentina • 
+                <a href="https://github.com/arqderman-tech/Subio-la-Nafta" target="_blank" rel="noopener">Código abierto</a>
+            </p>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
