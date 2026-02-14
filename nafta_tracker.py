@@ -92,22 +92,26 @@ def main():
     informe_mensual = ""
 
     if os.path.exists(ARCHIVO_HISTORICO):
-        # CORRECCIÓN: Leer el CSV completo con todas las columnas
+        # Leer el CSV completo con todas las columnas
         df_hist = pd.read_csv(ARCHIVO_HISTORICO)
         df_hist['fecha_vigencia'] = pd.to_datetime(df_hist['fecha_vigencia'], errors='coerce')
         
         # Agregar columna de fecha de chequeo si no existe en el DataFrame
         if 'fecha_chequeo' not in df_hist.columns:
             # Para registros antiguos, usar fecha_vigencia como fecha_chequeo
-            df_hist['fecha_chequeo'] = df_hist['fecha_vigencia'].dt.date
+            df_hist['fecha_chequeo'] = df_hist['fecha_vigencia']
             # IMPORTANTE: Reescribir el archivo con la nueva columna
             df_hist.to_csv(ARCHIVO_HISTORICO, index=False)
             print("✅ Columna fecha_chequeo agregada al histórico")
         else:
-            df_hist['fecha_chequeo'] = pd.to_datetime(df_hist['fecha_chequeo'], errors='coerce').dt.date
+            # CORRECCIÓN: Convertir fecha_chequeo a datetime
+            df_hist['fecha_chequeo'] = pd.to_datetime(df_hist['fecha_chequeo'], errors='coerce')
+        
+        # CORRECCIÓN: Convertir fecha_hoy a datetime para comparación
+        fecha_hoy_dt = pd.to_datetime(fecha_hoy)
         
         # Verificar si YA se chequeó HOY
-        ya_chequeado_hoy = (df_hist['fecha_chequeo'] == fecha_hoy).any()
+        ya_chequeado_hoy = (df_hist['fecha_chequeo'].dt.date == fecha_hoy).any()
         
         if ya_chequeado_hoy:
             print(f"ℹ️  Ya se realizó un chequeo el día de hoy ({fecha_hoy}).")
@@ -137,16 +141,17 @@ def main():
                               f"Vigencia del precio: {fecha_vigencia_precio}\n"
                               f"Chequeo: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
         
-        # CORRECCIÓN: Agregar fecha_chequeo ANTES de guardar
+        # Agregar fecha_chequeo ANTES de guardar
         nueva_fila = df_filtrado.iloc[[0]].copy()
         nueva_fila['fecha_chequeo'] = str(fecha_hoy)  # Convertir a string para el CSV
         
-        # CORRECCIÓN: Append con todas las columnas correctas
+        # Append con todas las columnas correctas
         nueva_fila.to_csv(ARCHIVO_HISTORICO, mode='a', index=False, header=False)
         print(f"✅ Nuevo registro agregado: ${precio_hoy:,.2f} | Vigencia: {fecha_vigencia_precio} | Chequeo: {fecha_hoy}")
 
         # 2. COMPARATIVA MENSUAL
-        fecha_hace_30_dias = fecha_hoy - timedelta(days=30)
+        # CORRECCIÓN: Convertir fecha_hace_30_dias a datetime para comparación
+        fecha_hace_30_dias = pd.to_datetime(fecha_hoy - timedelta(days=30))
         
         # Filtrar registros de hace 30 días o antes (basado en fecha_chequeo)
         df_mes = df_hist[df_hist['fecha_chequeo'] <= fecha_hace_30_dias]
@@ -168,7 +173,7 @@ def main():
                                f"Variación porcentual: {e_m} {pct_m:.2f}%")
             
             print(f"📊 Comparativa mensual:")
-            print(f"   Precio hace 30 días ({fecha_mes}): ${precio_mes:,.2f}")
+            print(f"   Precio hace 30 días ({fecha_mes.date()}): ${precio_mes:,.2f}")
             print(f"   Precio hoy ({fecha_hoy}): ${precio_hoy:,.2f}")
             print(f"   Diferencia: ${diff_m:,.2f} ({pct_m:.2f}%)")
         else:
