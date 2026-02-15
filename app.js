@@ -214,9 +214,22 @@ function createChart(data, period = 30) {
     
     let filteredData = data;
     if (period !== 'all') {
-        const cutoff = new Date();
+        // Usar la fecha del último registro disponible en lugar de la fecha actual
+        const lastDate = new Date(data[data.length - 1].fecha_chequeo);
+        const cutoff = new Date(lastDate);
         cutoff.setDate(cutoff.getDate() - period);
-        filteredData = data.filter(d => new Date(d.fecha_chequeo) >= cutoff);
+        
+        // Log para debug (podés eliminarlo después)
+        console.log('Último registro:', lastDate);
+        console.log('Cutoff:', cutoff);
+        console.log('Total de registros antes de filtrar:', data.length);
+        
+        filteredData = data.filter(d => {
+            const fecha = new Date(d.fecha_chequeo);
+            return fecha >= cutoff;
+        });
+        
+        console.log('Total de registros después de filtrar:', filteredData.length);
     }
     
     const labels = filteredData.map(d => formatDateShort(d.fecha_chequeo));
@@ -242,7 +255,9 @@ function createChart(data, period = 30) {
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
-                y: { ticks: { callback: (value) => `$${value}` } }
+                y: { 
+                    ticks: { callback: (value) => `$${value}` }
+                }
             }
         }
     });
