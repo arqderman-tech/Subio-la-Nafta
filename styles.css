@@ -127,29 +127,38 @@ body {
 }
 
 /* Cards */
-.card {
-    background: var(--color-card);
-    border-radius: var(--radius);
-    padding: 1.5rem;
-    box-shadow: var(--shadow-sm);
-    border: 1px solid var(--color-border);
-}
-
-.card-header {
+.cards-grid {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
+    flex-wrap: wrap; 
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    justify-content: center; /* ESTO CENTRA LOS CUADROS */
 }
 
-.card-header h2 {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--color-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+.card-primary {
+    width: 100%; /* El precio principal siempre arriba y a lo ancho */
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+    border: none;
+    flex: none; /* Evita que este cuadro intente achicarse */
 }
 
+/* Estilos de texto para el card azul (se mantienen igual) */
+.card-primary .card-header h2,
+.card-primary .update-time,
+.card-primary .location {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* Configuración para los dos cuadros de variación (Diaria y Mensual) */
+.cards-grid .card:not(.card-primary) {
+    flex: 1;
+    min-width: 280px;
+    max-width: 450px; /* Evita que se deformen en pantallas muy anchas */
+    display: flex;
+    flex-direction: column;
+    text-align: center;
+}
 .badge {
     font-size: 0.75rem;
     padding: 0.25rem 0.5rem;
