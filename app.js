@@ -14,18 +14,20 @@ function formatPrice(price) {
 }
 
 function formatDate(dateString) {
-    const date = new Date(dateString);
+    // Extraer solo la fecha (YYYY-MM-DD) sin la hora
+    const dateOnly = dateString.split(' ')[0];
+    const date = new Date(dateOnly + 'T12:00:00'); // Usar mediodía para evitar problemas de timezone
     return new Intl.DateTimeFormat('es-AR', {
         day: '2-digit',
         month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
+        year: 'numeric'
     }).format(date);
 }
 
 function formatDateShort(dateString) {
-    const date = new Date(dateString);
+    // Extraer solo la fecha (YYYY-MM-DD) sin la hora
+    const dateOnly = dateString.split(' ')[0];
+    const date = new Date(dateOnly + 'T12:00:00');
     return new Intl.DateTimeFormat('es-AR', {
         day: '2-digit',
         month: 'short'
@@ -67,11 +69,6 @@ function parseCSV(text) {
             row[header] = val.replace(/^"|"$/g, '').trim();
         });
         
-        // DEBUG: Ver qué tienen los registros del 14 y 15 de febrero
-        if (row.fecha_chequeo && (row.fecha_chequeo.includes('2026-02-14') || row.fecha_chequeo.includes('2026-02-15'))) {
-            console.log('Registro encontrado:', row.fecha_chequeo, 'Empresa:', row.empresa);
-        }
-        
         if (row.empresa && row.empresa.includes('UNITECPROCOM')) {
             data.push(row);
         }
@@ -86,8 +83,12 @@ async function fetchData() {
         if (!response.ok) throw new Error('Error al cargar datos');
         const text = await response.text();
         const data = parseCSV(text);
-        // Ordenar cronológicamente
-        data.sort((a, b) => new Date(a.fecha_chequeo) - new Date(b.fecha_chequeo));
+        // Ordenar cronológicamente usando solo la fecha (sin hora)
+        data.sort((a, b) => {
+            const dateA = a.fecha_chequeo.split(' ')[0];
+            const dateB = b.fecha_chequeo.split(' ')[0];
+            return new Date(dateA + 'T12:00:00') - new Date(dateB + 'T12:00:00');
+        });
         return data;
     } catch (error) {
         console.error('Error en fetchData:', error);
@@ -105,7 +106,10 @@ function calculateStats(data) {
     const currentPrice = parseFloat(currentData.precio);
 
     // Filtrar datos del año actual para estadísticas anuales
-    const dataCurrentYear = data.filter(d => new Date(d.fecha_chequeo).getFullYear() === currentYear);
+    const dataCurrentYear = data.filter(d => {
+        const dateOnly = d.fecha_chequeo.split(' ')[0];
+        return new Date(dateOnly + 'T12:00:00').getFullYear() === currentYear;
+    });
     const baseDataYear = dataCurrentYear.length > 0 ? dataCurrentYear : data;
 
     // --- CÁLCULOS ANUALES (Cuadros de abajo) ---
@@ -128,14 +132,17 @@ function calculateStats(data) {
     }
 
     // --- VARIACIÓN MENSUAL (30 días o inmediata anterior) ---
-    const dateToday = new Date(currentData.fecha_chequeo);
+    const dateOnly = currentData.fecha_chequeo.split(' ')[0];
+    const dateToday = new Date(dateOnly + 'T12:00:00');
     const targetDate = new Date(dateToday);
     targetDate.setDate(targetDate.getDate() - 30);
 
     let monthlyBasePrice = parseFloat(data[0].precio); // Por defecto el primero
     // Buscamos de atrás para adelante el registro más cercano a hace 30 días
     for (let i = data.length - 1; i >= 0; i--) {
-        if (new Date(data[i].fecha_chequeo) <= targetDate) {
+        const checkDateOnly = data[i].fecha_chequeo.split(' ')[0];
+        const checkDate = new Date(checkDateOnly + 'T12:00:00');
+        if (checkDate <= targetDate) {
             monthlyBasePrice = parseFloat(data[i].precio);
             break;
         }
@@ -219,22 +226,17 @@ function createChart(data, period = 30) {
     
     let filteredData = data;
     if (period !== 'all') {
-        // Usar la fecha del último registro disponible en lugar de la fecha actual
-        const lastDate = new Date(data[data.length - 1].fecha_chequeo);
+        // Usar la fecha del último registro disponible (solo fecha, sin hora)
+        const lastDateOnly = data[data.length - 1].fecha_chequeo.split(' ')[0];
+        const lastDate = new Date(lastDateOnly + 'T12:00:00');
         const cutoff = new Date(lastDate);
         cutoff.setDate(cutoff.getDate() - period);
         
-        // Log para debug (podés eliminarlo después)
-        console.log('Último registro:', lastDate);
-        console.log('Cutoff:', cutoff);
-        console.log('Total de registros antes de filtrar:', data.length);
-        
         filteredData = data.filter(d => {
-            const fecha = new Date(d.fecha_chequeo);
+            const dateOnly = d.fecha_chequeo.split(' ')[0];
+            const fecha = new Date(dateOnly + 'T12:00:00');
             return fecha >= cutoff;
         });
-        
-        console.log('Total de registros después de filtrar:', filteredData.length);
     }
     
     const labels = filteredData.map(d => formatDateShort(d.fecha_chequeo));
