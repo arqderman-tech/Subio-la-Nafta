@@ -271,7 +271,7 @@ function createChart(data, period = 30) {
             plugins: { legend: { display: false } },
             scales: {
                 y: { 
-                    ticks: { callback: (value) => `USD ${value}` }
+                    ticks: { callback: (value) => `USD ${parseFloat(value.toFixed(2))}` }
                 }
             }
         }
