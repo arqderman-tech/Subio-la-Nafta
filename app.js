@@ -121,6 +121,12 @@ function calculateStats(data) {
     const firstPriceYear = parseFloat(baseDataYear[0].precio);
     const totalChange = currentPrice - firstPriceYear;
     const totalPercent = (totalChange / firstPriceYear) * 100;
+    
+    // Contar solo registros con variación (cambios de precio)
+    const priceChanges = baseDataYear.filter(d => {
+        const variacion = parseFloat(d['%_variacion'] || 0);
+        return variacion !== 0.0;
+    }).length;
 
     // --- VARIACIÓN DIARIA (Contra el registro inmediato anterior) ---
     let dailyChange = 0;
@@ -164,7 +170,7 @@ function calculateStats(data) {
         dailyPercent,
         monthlyChange,
         monthlyPercent,
-        totalUpdates: baseDataYear.length,
+        totalUpdates: priceChanges,
         year: currentYear
     };
 }
