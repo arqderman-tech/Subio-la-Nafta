@@ -132,63 +132,27 @@ body {
     flex-wrap: wrap; 
     gap: 1rem;
     margin-bottom: 1.5rem;
-    justify-content: center; /* ESTO CENTRA LOS CUADROS */
+    justify-content: center; /* ESTO CENTRA LOS CUADROS HIJOS */
 }
 
 .card-primary {
-    width: 100%; /* El precio principal siempre arriba y a lo ancho */
+    width: 100%; /* El azul ocupa todo el ancho arriba */
     background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
     color: white;
     border: none;
-    flex: none; /* Evita que este cuadro intente achicarse */
+    flex: none;
 }
 
-/* Estilos de texto para el card azul (se mantienen igual) */
-.card-primary .card-header h2,
-.card-primary .update-time,
-.card-primary .location {
-    color: rgba(255, 255, 255, 0.9);
-}
-
-/* Configuración para los dos cuadros de variación (Diaria y Mensual) */
+/* Configuración para los dos cuadros de abajo */
 .cards-grid .card:not(.card-primary) {
     flex: 1;
     min-width: 280px;
-    max-width: 450px; /* Evita que se deformen en pantallas muy anchas */
+    max-width: 400px; /* Evita que se estiren demasiado hacia los lados */
     display: flex;
     flex-direction: column;
+    align-items: center; /* Centra el contenido interno */
     text-align: center;
 }
-.badge {
-    font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
-    background: var(--color-bg);
-    border-radius: 4px;
-    color: var(--color-text-secondary);
-    font-weight: 500;
-}
-
-/* Cards Grid */
-.cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-}
-
-.card-primary {
-    grid-column: 1 / -1;
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-    color: white;
-    border: none;
-}
-
-.card-primary .card-header h2,
-.card-primary .update-time,
-.card-primary .location {
-    color: rgba(255, 255, 255, 0.9);
-}
-
 /* Price Display */
 .price-display {
     display: flex;
