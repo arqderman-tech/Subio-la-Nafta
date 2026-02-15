@@ -122,10 +122,12 @@ function calculateStats(data) {
     const totalChange = currentPrice - firstPriceYear;
     const totalPercent = (totalChange / firstPriceYear) * 100;
     
-    // Contar solo registros con variación (cambios de precio)
-    const priceChanges = baseDataYear.filter(d => {
-        const variacion = parseFloat(d['%_variacion'] || 0);
-        return variacion !== 0.0;
+    // Contar solo registros con variación (cambios de precio EN USD)
+    const priceChanges = baseDataYear.filter((d, index) => {
+        if (index === 0) return false; // El primer registro no tiene anterior para comparar
+        const currentPriceUSD = parseFloat(d.price_usd);
+        const prevPriceUSD = parseFloat(baseDataYear[index - 1].price_usd);
+        return currentPriceUSD !== prevPriceUSD; // Cambió el precio en USD
     }).length;
 
     // --- VARIACIÓN DIARIA (Contra el registro inmediato anterior) ---
