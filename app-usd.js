@@ -103,7 +103,7 @@ function calculateStats(data) {
     const currentYear = new Date().getFullYear();
     const lastIdx = data.length - 1;
     const currentData = data[lastIdx];
-    const currentPrice = parseFloat(currentData.precio);
+    const currentPrice = parseFloat(currentData.price_usd); // CAMBIO: usar price_usd
 
     // Filtrar datos del año actual para estadísticas anuales
     const dataCurrentYear = data.filter(d => {
@@ -113,12 +113,12 @@ function calculateStats(data) {
     const baseDataYear = dataCurrentYear.length > 0 ? dataCurrentYear : data;
 
     // --- CÁLCULOS ANUALES (Cuadros de abajo) ---
-    const pricesYear = baseDataYear.map(d => parseFloat(d.precio));
+    const pricesYear = baseDataYear.map(d => parseFloat(d.price_usd)); // CAMBIO: usar price_usd
     const maxPrice = Math.max(...pricesYear);
     const minPrice = Math.min(...pricesYear);
-    const maxData = baseDataYear.find(d => parseFloat(d.precio) === maxPrice);
-    const minData = baseDataYear.find(d => parseFloat(d.precio) === minPrice);
-    const firstPriceYear = parseFloat(baseDataYear[0].precio);
+    const maxData = baseDataYear.find(d => parseFloat(d.price_usd) === maxPrice); // CAMBIO: usar price_usd
+    const minData = baseDataYear.find(d => parseFloat(d.price_usd) === minPrice); // CAMBIO: usar price_usd
+    const firstPriceYear = parseFloat(baseDataYear[0].price_usd); // CAMBIO: usar price_usd
     const totalChange = currentPrice - firstPriceYear;
     const totalPercent = (totalChange / firstPriceYear) * 100;
     
@@ -132,7 +132,7 @@ function calculateStats(data) {
     let dailyChange = 0;
     let dailyPercent = 0;
     if (data.length > 1) {
-        const prevPrice = parseFloat(data[lastIdx - 1].precio);
+        const prevPrice = parseFloat(data[lastIdx - 1].price_usd); // CAMBIO: usar price_usd
         dailyChange = currentPrice - prevPrice;
         dailyPercent = (dailyChange / prevPrice) * 100;
     }
@@ -143,13 +143,13 @@ function calculateStats(data) {
     const targetDate = new Date(dateToday);
     targetDate.setDate(targetDate.getDate() - 30);
 
-    let monthlyBasePrice = parseFloat(data[0].precio); // Por defecto el primero
+    let monthlyBasePrice = parseFloat(data[0].price_usd); // CAMBIO: usar price_usd
     // Buscamos de atrás para adelante el registro más cercano a hace 30 días
     for (let i = data.length - 1; i >= 0; i--) {
         const checkDateOnly = data[i].fecha_chequeo.split(' ')[0];
         const checkDate = new Date(checkDateOnly + 'T12:00:00');
         if (checkDate <= targetDate) {
-            monthlyBasePrice = parseFloat(data[i].precio);
+            monthlyBasePrice = parseFloat(data[i].price_usd); // CAMBIO: usar price_usd
             break;
         }
     }
@@ -246,7 +246,7 @@ function createChart(data, period = 30) {
     }
     
     const labels = filteredData.map(d => formatDateShort(d.fecha_chequeo));
-    const prices = filteredData.map(d => parseFloat(d.precio));
+    const prices = filteredData.map(d => parseFloat(d.price_usd)); // CAMBIO: usar price_usd
     
     if (chart) chart.destroy();
     chart = new Chart(ctx, {
