@@ -114,9 +114,12 @@ def main():
         else:
             ultimo_precio = float(df_hist['precio'].iloc[-1])
             
+            # CALCULAR VARIACIÓN RESPECTO AL DÍA ANTERIOR
+            diff = precio_hoy - ultimo_precio
+            variacion_pct = (diff / ultimo_precio) * 100 if ultimo_precio != 0 else 0.0
+            
             # 1. REPORTE DIARIO
             if precio_hoy != ultimo_precio:
-                diff = precio_hoy - ultimo_precio
                 emoji = "🔺" if diff > 0 else "🔻"
                 informe_diario = (f"{emoji} CAMBIO DE PRECIO DETECTADO\n"
                                   f"--------------------------\n"
@@ -134,11 +137,12 @@ def main():
                                   f"Vigencia del precio: {fecha_vigencia_precio}\n"
                                   f"Chequeo: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
             
-            # Guardar nuevo registro
+            # Guardar nuevo registro con %_variacion calculada
             nueva_fila = df_filtrado.iloc[[0]].copy()
+            nueva_fila['%_variacion'] = round(variacion_pct, 2)
             nueva_fila['fecha_chequeo'] = str(fecha_hoy)
             nueva_fila.to_csv(ARCHIVO_HISTORICO, mode='a', index=False, header=False)
-            print(f"✅ Registro guardado: ${precio_hoy}")
+            print(f"✅ Registro guardado: ${precio_hoy} (variación: {variacion_pct:.2f}%)")
 
         # --- 2. COMPARATIVA MENSUAL (Lógica Híbrida) ---
         fecha_hace_30_dias = fecha_hoy_dt - timedelta(days=30)
@@ -186,6 +190,7 @@ def main():
     else:
         # Primera ejecución
         nueva_fila = df_filtrado.iloc[[0]].copy()
+        nueva_fila['%_variacion'] = 0.0
         nueva_fila['fecha_chequeo'] = str(fecha_hoy)
         nueva_fila.to_csv(ARCHIVO_HISTORICO, index=False)
         informe_diario = f"🚀 INICIO DE SEGUIMIENTO\n⛽ Nafta Súper en {empresa_nombre}\nPrecio inicial: ${precio_hoy:,.2f}"
