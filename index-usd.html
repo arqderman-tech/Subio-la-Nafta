@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>¿Subió la Nafta? | Monitor de Precios Argentina</title>
-    <meta name="description" content="Seguimiento diario del precio de la Nafta Super en Argentina. Actualización automática desde datos oficiales.">
+    <title>Precios en Dólares | ¿Subió la Nafta?</title>
+    <meta name="description" content="Seguimiento del precio de la Nafta Super en dólares estadounidenses. Actualización automática.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -16,12 +16,18 @@
         <header class="header">
             <div class="header-content">
                 <h1 class="logo">
-                    <span class="emoji">⛽</span>
-                    <span class="logo-text">¿Subió la Nafta?</span>
+                    <span class="emoji">💵</span>
+                    <span class="logo-text">¿Subió la Nafta? (USD)</span>
                 </h1>
-                <p class="subtitle">Monitor en tiempo real del precio de Nafta Super en Argentina</p>
+                <p class="subtitle">Monitor en tiempo real del precio de Nafta Super en dólares</p>
             </div>
             <div class="social-links">
+                <a href="index.html" class="social-link">
+                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                    </svg>
+                    Ver en Pesos
+                </a>
                 <a href="https://x.com/lanaftasubio" target="_blank" rel="noopener" class="social-link">
                     <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
@@ -59,7 +65,7 @@
                         <span class="update-time" id="last-update"></span>
                     </div>
                     <div class="price-display">
-                        <span class="currency">$</span>
+                        <span class="currency">USD</span>
                         <span class="price" id="current-price">-</span>
                     </div>
                     <div class="location">
@@ -79,7 +85,7 @@
                     <div class="change-display" id="daily-change">
                         <div class="change-amount">
                             <span class="trend-icon">-</span>
-                            <span>$0.00</span>
+                            <span>USD 0.00</span>
                         </div>
                         <div class="change-status">Sin datos</div>
                     </div>
@@ -94,7 +100,7 @@
                     <div class="change-display" id="monthly-change">
                         <div class="change-amount">
                             <span class="trend-icon">-</span>
-                            <span>$0.00</span>
+                            <span>USD 0.00</span>
                         </div>
                         <div class="change-percent">-</div>
                     </div>
@@ -120,12 +126,12 @@
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-label">Precio Máximo del año</div>
-                    <div class="stat-value" id="max-price">$-</div>
+                    <div class="stat-value" id="max-price">USD -</div>
                     <div class="stat-date" id="max-date">-</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">Precio Mínimo del año</div>
-                    <div class="stat-value" id="min-price">$-</div>
+                    <div class="stat-value" id="min-price">USD -</div>
                     <div class="stat-date" id="min-date">-</div>
                 </div>
                 <div class="stat-card">
@@ -143,8 +149,8 @@
             <!-- Footer Info -->
             <div class="info-section">
                 <div class="info-card">
-                    <h3>📊 Sobre los Datos</h3>
-                    <p>Los datos se obtienen del <strong>Portal de Datos Abiertos del Ministerio de Energía de Argentina</strong> y se actualizan automáticamente cada día.</p>
+                    <h3>💵 Sobre los Datos</h3>
+                    <p>Los precios en dólares se calculan utilizando la <strong>cotización oficial del dólar</strong> y los datos del Ministerio de Energía.</p>
                     <p>Se monitorea el precio de <strong>Nafta Super (entre 92 y 95 RON)</strong> en estaciones YPF de la provincia de Buenos Aires.</p>
                 </div>
                 <div class="info-card">
@@ -154,13 +160,6 @@
                 </div>
             </div>
         </main>
-
-        <!-- USD Price Button -->
-        <div style="text-align: center; margin: 2rem 0;">
-            <a href="index-usd.html" class="usd-button">
-                💵 Precios en Dólares
-            </a>
-        </div>
 
         <!-- Footer -->
         <footer class="footer">
@@ -174,6 +173,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script src="app.js"></script>
+    <script src="app-usd.js"></script>
 </body>
 </html>
