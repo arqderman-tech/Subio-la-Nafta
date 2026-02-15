@@ -81,7 +81,7 @@ async function fetchData() {
         if (!response.ok) throw new Error('Error al cargar datos');
         const text = await response.text();
         const data = parseCSV(text);
-        // Ordenar por fecha de chequeo
+        // Ordenar cronológicamente
         data.sort((a, b) => new Date(a.fecha_chequeo) - new Date(b.fecha_chequeo));
         return data;
     } catch (error) {
@@ -90,7 +90,7 @@ async function fetchData() {
     }
 }
 
-// --- LÓGICA DE CÁLCULOS (ANUAL, DIARIO Y MENSUAL) ---
+// --- LÓGICA DE CÁLCULOS ---
 function calculateStats(data) {
     if (!data || data.length === 0) return null;
 
@@ -99,24 +99,21 @@ function calculateStats(data) {
     const currentData = data[lastIdx];
     const currentPrice = parseFloat(currentData.precio);
 
-    // 1. Filtrar datos del año actual para Máx/Mín/Total Anual
-    const dataCurrentYear = data.filter(d => {
-        const date = new Date(d.fecha_chequeo);
-        return date.getFullYear() === currentYear;
-    });
-    const baseData = dataCurrentYear.length > 0 ? dataCurrentYear : data;
+    // Filtrar datos del año actual para estadísticas anuales
+    const dataCurrentYear = data.filter(d => new Date(d.fecha_chequeo).getFullYear() === currentYear);
+    const baseDataYear = dataCurrentYear.length > 0 ? dataCurrentYear : data;
 
-    // --- CÁLCULOS ANUALES (Lo que ya funcionaba) ---
-    const prices = baseData.map(d => parseFloat(d.precio));
-    const maxPrice = Math.max(...prices);
-    const minPrice = Math.min(...prices);
-    const maxData = baseData.find(d => parseFloat(d.precio) === maxPrice);
-    const minData = baseData.find(d => parseFloat(d.precio) === minPrice);
-    const firstPriceYear = parseFloat(baseData[0].precio);
+    // --- CÁLCULOS ANUALES (Cuadros de abajo) ---
+    const pricesYear = baseDataYear.map(d => parseFloat(d.precio));
+    const maxPrice = Math.max(...pricesYear);
+    const minPrice = Math.min(...pricesYear);
+    const maxData = baseDataYear.find(d => parseFloat(d.precio) === maxPrice);
+    const minData = baseDataYear.find(d => parseFloat(d.precio) === minPrice);
+    const firstPriceYear = parseFloat(baseDataYear[0].precio);
     const totalChange = currentPrice - firstPriceYear;
     const totalPercent = (totalChange / firstPriceYear) * 100;
 
-    // --- CÁLCULO VARIACIÓN DIARIA (CORRECCIÓN) ---
+    // --- VARIACIÓN DIARIA (Contra el registro inmediato anterior) ---
     let dailyChange = 0;
     let dailyPercent = 0;
     if (data.length > 1) {
@@ -125,20 +122,21 @@ function calculateStats(data) {
         dailyPercent = (dailyChange / prevPrice) * 100;
     }
 
-    // --- CÁLCULO VARIACIÓN MENSUAL (CORRECCIÓN) ---
+    // --- VARIACIÓN MENSUAL (30 días o inmediata anterior) ---
     const dateToday = new Date(currentData.fecha_chequeo);
-    const thirtyDaysAgo = new Date(dateToday);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    // Buscamos el precio más antiguo dentro de los últimos 30 días
-    const price30DaysAgoData = data.find(d => new Date(d.fecha_chequeo) >= thirtyDaysAgo);
-    let monthlyChange = 0;
-    let monthlyPercent = 0;
-    if (price30DaysAgoData) {
-        const oldPrice = parseFloat(price30DaysAgoData.precio);
-        monthlyChange = currentPrice - oldPrice;
-        monthlyPercent = (monthlyChange / oldPrice) * 100;
+    const targetDate = new Date(dateToday);
+    targetDate.setDate(targetDate.getDate() - 30);
+
+    let monthlyBasePrice = parseFloat(data[0].precio); // Por defecto el primero
+    // Buscamos de atrás para adelante el registro más cercano a hace 30 días
+    for (let i = data.length - 1; i >= 0; i--) {
+        if (new Date(data[i].fecha_chequeo) <= targetDate) {
+            monthlyBasePrice = parseFloat(data[i].precio);
+            break;
+        }
     }
+    const monthlyChange = currentPrice - monthlyBasePrice;
+    const monthlyPercent = (monthlyChange / monthlyBasePrice) * 100;
 
     return {
         current: currentPrice,
@@ -154,7 +152,7 @@ function calculateStats(data) {
         dailyPercent,
         monthlyChange,
         monthlyPercent,
-        totalUpdates: baseData.length,
+        totalUpdates: baseDataYear.length,
         year: currentYear
     };
 }
@@ -163,52 +161,49 @@ function calculateStats(data) {
 function updateUI(stats) {
     if (!stats) return;
 
-    // Actualizar Títulos de los cuadros según el año
-    const labels = document.querySelectorAll('.stat-label'); 
-    if (labels.length >= 3) {
-        labels[0].textContent = `VALOR MÁXIMO DEL ${stats.year}`;
-        labels[1].textContent = `VALOR MÍNIMO DEL ${stats.year}`;
-        labels[2].textContent = `VARIACIÓN TOTAL EN EL ${stats.year}`;
-    }
-
-    // Cuadros Principales Anuales
+    // 1. Precio Principal
     document.getElementById('current-price').textContent = formatPrice(stats.current);
     document.getElementById('last-update').textContent = formatDate(stats.currentDate);
     document.getElementById('location').textContent = stats.location;
-    
+
+    // 2. VARIACIÓN DIARIA (Mapeo preciso al HTML)
+    const dailyContainer = document.getElementById('daily-change');
+    if (dailyContainer) {
+        const amountSpan = dailyContainer.querySelector('.change-amount span:last-child');
+        const iconSpan = dailyContainer.querySelector('.trend-icon');
+        const statusDiv = dailyContainer.querySelector('.change-status');
+        
+        const isPos = stats.dailyChange >= 0;
+        iconSpan.textContent = isPos ? '🔺' : '🔻';
+        amountSpan.textContent = `$${formatPrice(Math.abs(stats.dailyChange))}`;
+        statusDiv.textContent = `${isPos ? '+' : '-'}${Math.abs(stats.dailyPercent).toFixed(2)}% respecto al último registro`;
+        dailyContainer.className = `change-display ${isPos ? 'negative' : 'positive'}`;
+    }
+
+    // 3. VARIACIÓN MENSUAL (Mapeo preciso al HTML)
+    const monthlyContainer = document.getElementById('monthly-change');
+    if (monthlyContainer) {
+        const amountSpan = monthlyContainer.querySelector('.change-amount span:last-child');
+        const iconSpan = monthlyContainer.querySelector('.trend-icon');
+        const percentDiv = monthlyContainer.querySelector('.change-percent');
+        
+        const isPos = stats.monthlyChange >= 0;
+        iconSpan.textContent = isPos ? '🔺' : '🔻';
+        amountSpan.textContent = `$${formatPrice(Math.abs(stats.monthlyChange))}`;
+        percentDiv.textContent = `${isPos ? '+' : '-'}${Math.abs(stats.monthlyPercent).toFixed(2)}% en 30 días (aprox)`;
+        monthlyContainer.className = `change-display ${isPos ? 'negative' : 'positive'}`;
+    }
+
+    // 4. Estadísticas de abajo
     document.getElementById('max-price').textContent = `$${formatPrice(stats.maxPrice)}`;
     document.getElementById('max-date').textContent = formatDateShort(stats.maxDate);
-    
     document.getElementById('min-price').textContent = `$${formatPrice(stats.minPrice)}`;
     document.getElementById('min-date').textContent = formatDateShort(stats.minDate);
     
     const totalChangeEl = document.getElementById('total-change');
-    const isPosT = stats.totalChange >= 0;
-    totalChangeEl.className = `stat-value ${isPosT ? 'negative' : 'positive'}`;
-    totalChangeEl.textContent = `${isPosT ? '🔺' : '🔻'} $${formatPrice(Math.abs(stats.totalChange))}`;
-    document.getElementById('total-change-percent').textContent = `${Math.abs(stats.totalPercent).toFixed(2)}%`;
-    
+    totalChangeEl.textContent = `${stats.totalChange >= 0 ? '🔺' : '🔻'} $${formatPrice(Math.abs(stats.totalChange))}`;
+    document.getElementById('total-change-percent').textContent = `${stats.totalPercent.toFixed(2)}% acumulado en ${stats.year}`;
     document.getElementById('total-updates').textContent = stats.totalUpdates;
-
-    // NUEVO: VARIACIÓN DIARIA
-    const dailyValEl = document.getElementById('daily-val');
-    const dailyPercEl = document.getElementById('daily-perc');
-    if (dailyValEl) {
-        const isPosD = stats.dailyChange >= 0;
-        dailyValEl.className = `stat-value ${isPosD ? 'negative' : 'positive'}`;
-        dailyValEl.textContent = `${isPosD ? '🔺' : '🔻'} $${formatPrice(Math.abs(stats.dailyChange))}`;
-        dailyPercEl.textContent = `${Math.abs(stats.dailyPercent).toFixed(2)}%`;
-    }
-
-    // NUEVO: VARIACIÓN MENSUAL
-    const monthlyValEl = document.getElementById('monthly-val');
-    const monthlyPercEl = document.getElementById('monthly-perc');
-    if (monthlyValEl) {
-        const isPosM = stats.monthlyChange >= 0;
-        monthlyValEl.className = `stat-value ${isPosM ? 'negative' : 'positive'}`;
-        monthlyValEl.textContent = `${isPosM ? '🔺' : '🔻'} $${formatPrice(Math.abs(stats.monthlyChange))}`;
-        monthlyPercEl.textContent = `${Math.abs(stats.monthlyPercent).toFixed(2)}%`;
-    }
 }
 
 // --- GRÁFICO ---
@@ -245,12 +240,9 @@ function createChart(data, period = 30) {
         options: { 
             responsive: true, 
             maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
             scales: {
-                x: { ticks: { autoSkip: true, maxTicksLimit: 10 } },
-                y: { ticks: { callback: (value) => `$${formatPrice(value)}` } }
-            },
-            plugins: {
-                legend: { display: false }
+                y: { ticks: { callback: (value) => `$${value}` } }
             }
         }
     });
@@ -261,7 +253,8 @@ function setupChartControls() {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            createChart(allData, btn.dataset.period === 'all' ? 'all' : parseInt(btn.dataset.period));
+            const period = btn.dataset.period === 'all' ? 'all' : parseInt(btn.dataset.period);
+            createChart(allData, period);
         });
     });
 }
@@ -271,20 +264,24 @@ async function init() {
     const loading = document.getElementById('loading');
     const mainContent = document.getElementById('main-content');
     const error = document.getElementById('error');
+    
     try {
         allData = await fetchData();
-        if (allData.length === 0) throw new Error('No se encontraron datos');
+        if (allData.length === 0) throw new Error('No se encontraron datos de la empresa');
+        
         const stats = calculateStats(allData);
         updateUI(stats);
         createChart(allData, 30);
         setupChartControls();
+        
         if(loading) loading.style.display = 'none';
         if(mainContent) mainContent.style.display = 'block';
     } catch (err) {
+        console.error(err);
         if(loading) loading.style.display = 'none';
         if(error) {
             error.style.display = 'block';
-            error.innerHTML = `<p>⚠️ Error: ${err.message}</p>`;
+            error.querySelector('p').textContent = `⚠️ Error: ${err.message}`;
         }
     }
 }
