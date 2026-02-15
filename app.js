@@ -67,6 +67,11 @@ function parseCSV(text) {
             row[header] = val.replace(/^"|"$/g, '').trim();
         });
         
+        // DEBUG: Ver qué tienen los registros del 14 y 15 de febrero
+        if (row.fecha_chequeo && (row.fecha_chequeo.includes('2026-02-14') || row.fecha_chequeo.includes('2026-02-15'))) {
+            console.log('Registro encontrado:', row.fecha_chequeo, 'Empresa:', row.empresa);
+        }
+        
         if (row.empresa && row.empresa.includes('UNITECPROCOM')) {
             data.push(row);
         }
