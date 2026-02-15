@@ -141,7 +141,7 @@ function calculateStats(data) {
     return {
         current: currentPrice,
         currentDate: currentData.fecha_chequeo,
-        location: `${currentData.localidad}, ${currentData.provincia}`,
+        location: 'GRAN BUENOS AIRES',
         maxPrice,
         maxDate: maxData.fecha_chequeo,
         minPrice,
