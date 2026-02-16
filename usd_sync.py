@@ -7,8 +7,7 @@ Sincroniza data/historico_precios_usd.csv a partir de:
 
 Fuentes de datos (en orden de prioridad):
   1. Matba Rofex (scraping HTML - más rápido y confiable)
-  2. API BCRA (JSON)
-  3. XLS BCRA (backup)
+  2. XLS BCRA (backup - últimos 2 meses)
 
 Lógica:
   price_usd = precio / dolar_a3500_del_dia
@@ -22,7 +21,8 @@ import requests
 import io
 import os
 import warnings
-from datetime import datetime, timedelta
+from datetime import datetime
+from bs4 import BeautifulSoup
 
 # Suprimir advertencias de SSL
 warnings.filterwarnings('ignore', message='Unverified HTTPS request')
@@ -35,9 +35,6 @@ ARCHIVO_USD        = os.path.join(DIR_DATA, "historico_precios_usd.csv")
 # ── FUENTES DEL DÓLAR A3500 ───────────────────────────────────────────────────
 # Matba Rofex - Fuente principal (más simple y confiable)
 URL_MATBA_ROFEX = "https://matbarofex.com.ar/DolarA3500/BuscarCotizacion"
-
-# API estadística del BCRA — serie 7935 = Tipo de cambio de referencia (A 3500) vendedor
-URL_API_BCRA = "https://api.bcra.gob.ar/estadisticas/v2.0/datosvariable/7935/{start_date}/{end_date}"
 
 # El BCRA publica el XLS histórico completo en este endpoint (backup)
 URL_XLS_BCRA = "https://www.bcra.gob.ar/archivos/Pdfs/PublicacionesEstadisticas/com3500.xls"
@@ -54,18 +51,32 @@ def descargar_dolar_matbarofex() -> pd.DataFrame:
                        headers={"User-Agent": "Mozilla/5.0"})
     resp.raise_for_status()
     
-    # Parsear la tabla HTML usando pandas con motor explícito
-    # Usar lxml directamente en lugar de BeautifulSoup para evitar el error de SoupStrainer
-    tables = pd.read_html(io.StringIO(resp.text), flavor='lxml')
+    # Usar BeautifulSoup directamente para mayor control
+    soup = BeautifulSoup(resp.text, 'html.parser')
     
-    if not tables:
-        raise ValueError("No se encontraron tablas en la página de Matba Rofex")
+    # Buscar la tabla (usualmente tiene clase o id específico)
+    table = soup.find('table')
+    if not table:
+        raise ValueError("No se encontró tabla en la página de Matba Rofex")
     
-    # La primera (y probablemente única) tabla tiene las cotizaciones
-    df = tables[0]
+    # Extraer filas
+    rows = table.find_all('tr')
+    if len(rows) < 2:
+        raise ValueError("La tabla de Matba Rofex no tiene suficientes filas")
     
-    # Las columnas deberían ser ['Día', 'Cotización']
-    df.columns = ['fecha', 'tc_vendedor']
+    # Parsear datos
+    data = []
+    for row in rows[1:]:  # Saltar header
+        cols = row.find_all('td')
+        if len(cols) >= 2:
+            fecha_str = cols[0].get_text(strip=True)
+            tc_str = cols[1].get_text(strip=True)
+            data.append({'fecha': fecha_str, 'tc_vendedor': tc_str})
+    
+    if not data:
+        raise ValueError("No se pudieron extraer datos de la tabla")
+    
+    df = pd.DataFrame(data)
     
     # Parsear fecha (formato dd/mm/yyyy)
     df['fecha'] = pd.to_datetime(df['fecha'], format='%d/%m/%Y', errors='coerce')
@@ -82,44 +93,11 @@ def descargar_dolar_matbarofex() -> pd.DataFrame:
     return df
 
 
-def descargar_dolar_api() -> pd.DataFrame:
-    """
-    Alternativa: API JSON del BCRA.
-    Devuelve DataFrame con columnas [fecha, tc_vendedor].
-    """
-    # Usar rango más corto: últimos 2 años en lugar de desde 2010
-    end_date = datetime.today()
-    start_date = end_date - timedelta(days=730)  # 2 años
-    
-    url = URL_API_BCRA.format(
-        start_date=start_date.strftime("%Y-%m-%d"),
-        end_date=end_date.strftime("%Y-%m-%d")
-    )
-    print(f"  Intentando API BCRA: {url} ...")
-    
-    # Deshabilitar verificación SSL para evitar problemas en GitHub Actions
-    resp = requests.get(url, timeout=20, verify=False,
-                       headers={"User-Agent": "Mozilla/5.0"})
-    resp.raise_for_status()
-
-    data = resp.json()
-    # La API devuelve {"status":200,"results":[{"fecha":"2025-01-02","valor":1048.34}, ...]}
-    resultados = data.get("results", [])
-    if not resultados:
-        raise ValueError("La API del BCRA no devolvió resultados.")
-
-    df = pd.DataFrame(resultados)
-    df.columns = [c.lower() for c in df.columns]
-    df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce")
-    df["tc_vendedor"] = pd.to_numeric(df["valor"], errors="coerce")
-    df = df[["fecha", "tc_vendedor"]].dropna()
-    df = df.sort_values("fecha").reset_index(drop=True)
-    print(f"  API OK: {len(df)} filas, desde {df['fecha'].min().date()} hasta {df['fecha'].max().date()}")
-    return df
-
-
 def descargar_dolar_xls() -> pd.DataFrame:
-    """Descarga el XLS histórico del BCRA y devuelve un DataFrame con columnas [fecha, tc_vendedor]."""
+    """
+    Descarga el XLS histórico del BCRA y devuelve un DataFrame con columnas [fecha, tc_vendedor].
+    Filtra solo datos desde 2026-01-01 hasta hoy para reducir el tamaño.
+    """
     print(f"  Descargando XLS BCRA A3500 desde {URL_XLS_BCRA} ...")
     resp = requests.get(URL_XLS_BCRA, timeout=30, verify=False,
                         headers={"User-Agent": "Mozilla/5.0"})
@@ -148,6 +126,12 @@ def descargar_dolar_xls() -> pd.DataFrame:
     df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce", dayfirst=True)
     df["tc_vendedor"] = pd.to_numeric(df["tc_vendedor"], errors="coerce")
     df = df.dropna(subset=["fecha", "tc_vendedor"])
+    
+    # Filtrar solo desde 2026-01-01 hasta hoy
+    fecha_inicio = pd.Timestamp('2026-01-01')
+    fecha_hoy = pd.Timestamp(datetime.now().date())
+    df = df[(df["fecha"] >= fecha_inicio) & (df["fecha"] <= fecha_hoy)]
+    
     df = df.sort_values("fecha").reset_index(drop=True)
     print(f"  XLS OK: {len(df)} filas, desde {df['fecha'].min().date()} hasta {df['fecha'].max().date()}")
     return df
@@ -156,25 +140,20 @@ def descargar_dolar_xls() -> pd.DataFrame:
 def obtener_dolar_a3500() -> pd.DataFrame:
     """
     Intenta obtener el tipo de cambio A3500 de múltiples fuentes.
-    Orden de prioridad: Matba Rofex → API BCRA → XLS BCRA
+    Orden de prioridad: Matba Rofex → XLS BCRA
     """
     try:
         return descargar_dolar_matbarofex()
     except Exception as e_matba:
-        print(f"  Matba Rofex falló ({e_matba}), probando API BCRA ...")
+        print(f"  Matba Rofex falló ({e_matba}), probando XLS ...")
         try:
-            return descargar_dolar_api()
-        except Exception as e_api:
-            print(f"  API falló ({e_api}), probando XLS ...")
-            try:
-                return descargar_dolar_xls()
-            except Exception as e_xls:
-                raise RuntimeError(
-                    f"No se pudo obtener el tipo de cambio A3500.\n"
-                    f"  Error Matba Rofex: {e_matba}\n"
-                    f"  Error API BCRA: {e_api}\n"
-                    f"  Error XLS BCRA: {e_xls}"
-                )
+            return descargar_dolar_xls()
+        except Exception as e_xls:
+            raise RuntimeError(
+                f"No se pudo obtener el tipo de cambio A3500.\n"
+                f"  Error Matba Rofex: {e_matba}\n"
+                f"  Error XLS BCRA: {e_xls}"
+            )
 
 
 def _detectar_columna(df: pd.DataFrame, candidatos: list) -> str | None:
