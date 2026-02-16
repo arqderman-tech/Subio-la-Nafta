@@ -27,6 +27,7 @@ from datetime import datetime
 # Suprimir advertencias de SSL
 warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
+
 # ── RUTAS ─────────────────────────────────────────────────────────────────────
 DIR_DATA           = "data"
 ARCHIVO_PRECIOS    = os.path.join(DIR_DATA, "historico_precios.csv")
@@ -118,11 +119,10 @@ def descargar_dolar_xls() -> pd.DataFrame:
                         headers={"User-Agent": "Mozilla/5.0"})
     resp.raise_for_status()
 
-    # El XLS tiene varias hojas; la que nos importa suele ser la primera.
-    # Las columnas típicas son: fecha, tipo_pase_activo, tipo_pase_pasivo,
-    # tipo_cambio_referencia_compra, tipo_cambio_referencia_venta, etc.
-    # Usamos el valor VENDEDOR (columna E, índice 4) como referencia.
-    xls = pd.read_excel(io.BytesIO(resp.content), sheet_name=0, header=0, engine="xlrd")
+    # Leer el XLS saltando las primeras filas hasta encontrar el header
+    xls = pd.read_excel(io.BytesIO(resp.content), sheet_name=0, 
+                       skiprows=3,  # ← Saltar las primeras 3 filas
+                       engine="xlrd")
 
     # Normalizar nombres de columna a minúsculas sin espacios
     xls.columns = [str(c).strip().lower().replace(" ", "_") for c in xls.columns]
