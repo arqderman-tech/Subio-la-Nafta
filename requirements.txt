@@ -5,3 +5,4 @@ python-dotenv==1.0.0
 xlrd>=2.0.1
 lxml
 html5lib
+beautifulsoup4
