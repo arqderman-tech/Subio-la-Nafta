@@ -3,7 +3,12 @@ usd_sync.py
 ===========
 Sincroniza data/historico_precios_usd.csv a partir de:
   - data/historico_precios.csv   (generado por nafta_tracker.py)
-  - Tipo de cambio A3500 del BCRA (descargado automáticamente)
+  - Tipo de cambio A3500 (descargado automáticamente)
+
+Fuentes de datos (en orden de prioridad):
+  1. Matba Rofex (scraping HTML - más rápido y confiable)
+  2. API BCRA (JSON)
+  3. XLS BCRA (backup)
 
 Lógica:
   price_usd = precio / dolar_a3500_del_dia
@@ -16,7 +21,11 @@ import pandas as pd
 import requests
 import io
 import os
+import warnings
 from datetime import datetime
+
+# Suprimir advertencias de SSL
+warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
 # ── RUTAS ─────────────────────────────────────────────────────────────────────
 DIR_DATA           = "data"
@@ -24,19 +33,88 @@ ARCHIVO_PRECIOS    = os.path.join(DIR_DATA, "historico_precios.csv")
 ARCHIVO_USD        = os.path.join(DIR_DATA, "historico_precios_usd.csv")
 
 # ── FUENTES DEL DÓLAR A3500 ───────────────────────────────────────────────────
-# El BCRA publica el XLS histórico completo en este endpoint.
-# Backup: también se puede usar la API de la serie estadística del BCRA (JSON).
-URL_XLS_BCRA = "https://www.bcra.gob.ar/archivos/Pdfs/PublicacionesEstadisticas/com3500.xls"
+# Matba Rofex - Fuente principal (más simple y confiable)
+URL_MATBA_ROFEX = "https://matbarofex.com.ar/DolarA3500/BuscarCotizacion"
 
 # API estadística del BCRA — serie 7935 = Tipo de cambio de referencia (A 3500) vendedor
-# Permite traer los últimos N días en formato JSON sin necesidad de parsear XLS.
 URL_API_BCRA = "https://api.bcra.gob.ar/estadisticas/v2.0/datosvariable/7935/2010-01-01/{today}"
+
+# El BCRA publica el XLS histórico completo en este endpoint (backup)
+URL_XLS_BCRA = "https://www.bcra.gob.ar/archivos/Pdfs/PublicacionesEstadisticas/com3500.xls"
+
+
+def descargar_dolar_matbarofex() -> pd.DataFrame:
+    """
+    Scrapea la tabla de cotizaciones A3500 desde Matba Rofex.
+    Devuelve DataFrame con columnas [fecha, tc_vendedor].
+    """
+    print(f"  Scrapeando Matba Rofex: {URL_MATBA_ROFEX} ...")
+    
+    resp = requests.get(URL_MATBA_ROFEX, timeout=20, 
+                       headers={"User-Agent": "Mozilla/5.0"})
+    resp.raise_for_status()
+    
+    # Parsear la tabla HTML usando pandas
+    tables = pd.read_html(io.StringIO(resp.text))
+    
+    if not tables:
+        raise ValueError("No se encontraron tablas en la página de Matba Rofex")
+    
+    # La primera (y probablemente única) tabla tiene las cotizaciones
+    df = tables[0]
+    
+    # Las columnas deberían ser ['Día', 'Cotización']
+    df.columns = ['fecha', 'tc_vendedor']
+    
+    # Parsear fecha (formato dd/mm/yyyy)
+    df['fecha'] = pd.to_datetime(df['fecha'], format='%d/%m/%Y', errors='coerce')
+    
+    # Parsear cotización (formato: 1.395,4205 - punto como separador de miles, coma decimal)
+    df['tc_vendedor'] = df['tc_vendedor'].astype(str).str.replace('.', '', regex=False)
+    df['tc_vendedor'] = df['tc_vendedor'].str.replace(',', '.', regex=False)
+    df['tc_vendedor'] = pd.to_numeric(df['tc_vendedor'], errors='coerce')
+    
+    df = df.dropna(subset=['fecha', 'tc_vendedor'])
+    df = df.sort_values('fecha').reset_index(drop=True)
+    
+    print(f"  Matba Rofex OK: {len(df)} filas, desde {df['fecha'].min().date()} hasta {df['fecha'].max().date()}")
+    return df
+
+
+def descargar_dolar_api() -> pd.DataFrame:
+    """
+    Alternativa: API JSON del BCRA.
+    Devuelve DataFrame con columnas [fecha, tc_vendedor].
+    """
+    today = datetime.today().strftime("%Y-%m-%d")
+    url = URL_API_BCRA.format(today=today)
+    print(f"  Intentando API BCRA: {url} ...")
+    
+    # Deshabilitar verificación SSL para evitar problemas en GitHub Actions
+    resp = requests.get(url, timeout=20, verify=False,
+                       headers={"User-Agent": "Mozilla/5.0"})
+    resp.raise_for_status()
+
+    data = resp.json()
+    # La API devuelve {"status":200,"results":[{"fecha":"2025-01-02","valor":1048.34}, ...]}
+    resultados = data.get("results", [])
+    if not resultados:
+        raise ValueError("La API del BCRA no devolvió resultados.")
+
+    df = pd.DataFrame(resultados)
+    df.columns = [c.lower() for c in df.columns]
+    df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce")
+    df["tc_vendedor"] = pd.to_numeric(df["valor"], errors="coerce")
+    df = df[["fecha", "tc_vendedor"]].dropna()
+    df = df.sort_values("fecha").reset_index(drop=True)
+    print(f"  API OK: {len(df)} filas, desde {df['fecha'].min().date()} hasta {df['fecha'].max().date()}")
+    return df
 
 
 def descargar_dolar_xls() -> pd.DataFrame:
     """Descarga el XLS histórico del BCRA y devuelve un DataFrame con columnas [fecha, tc_vendedor]."""
     print(f"  Descargando XLS BCRA A3500 desde {URL_XLS_BCRA} ...")
-    resp = requests.get(URL_XLS_BCRA, timeout=30,
+    resp = requests.get(URL_XLS_BCRA, timeout=30, verify=False,
                         headers={"User-Agent": "Mozilla/5.0"})
     resp.raise_for_status()
 
@@ -69,47 +147,28 @@ def descargar_dolar_xls() -> pd.DataFrame:
     return df
 
 
-def descargar_dolar_api() -> pd.DataFrame:
-    """
-    Alternativa: API JSON del BCRA.
-    Devuelve DataFrame con columnas [fecha, tc_vendedor].
-    """
-    today = datetime.today().strftime("%Y-%m-%d")
-    url = URL_API_BCRA.format(today=today)
-    print(f"  Intentando API BCRA: {url} ...")
-    resp = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
-    resp.raise_for_status()
-
-    data = resp.json()
-    # La API devuelve {"status":200,"results":[{"fecha":"2025-01-02","valor":1048.34}, ...]}
-    resultados = data.get("results", [])
-    if not resultados:
-        raise ValueError("La API del BCRA no devolvió resultados.")
-
-    df = pd.DataFrame(resultados)
-    df.columns = [c.lower() for c in df.columns]
-    df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce")
-    df["tc_vendedor"] = pd.to_numeric(df["valor"], errors="coerce")
-    df = df[["fecha", "tc_vendedor"]].dropna()
-    df = df.sort_values("fecha").reset_index(drop=True)
-    print(f"  API OK: {len(df)} filas, desde {df['fecha'].min().date()} hasta {df['fecha'].max().date()}")
-    return df
-
-
 def obtener_dolar_a3500() -> pd.DataFrame:
-    """Intenta primero la API JSON; si falla, usa el XLS."""
+    """
+    Intenta obtener el tipo de cambio A3500 de múltiples fuentes.
+    Orden de prioridad: Matba Rofex → API BCRA → XLS BCRA
+    """
     try:
-        return descargar_dolar_api()
-    except Exception as e_api:
-        print(f"  API falló ({e_api}), probando XLS ...")
+        return descargar_dolar_matbarofex()
+    except Exception as e_matba:
+        print(f"  Matba Rofex falló ({e_matba}), probando API BCRA ...")
         try:
-            return descargar_dolar_xls()
-        except Exception as e_xls:
-            raise RuntimeError(
-                f"No se pudo obtener el tipo de cambio A3500.\n"
-                f"  Error API: {e_api}\n"
-                f"  Error XLS: {e_xls}"
-            )
+            return descargar_dolar_api()
+        except Exception as e_api:
+            print(f"  API falló ({e_api}), probando XLS ...")
+            try:
+                return descargar_dolar_xls()
+            except Exception as e_xls:
+                raise RuntimeError(
+                    f"No se pudo obtener el tipo de cambio A3500.\n"
+                    f"  Error Matba Rofex: {e_matba}\n"
+                    f"  Error API BCRA: {e_api}\n"
+                    f"  Error XLS BCRA: {e_xls}"
+                )
 
 
 def _detectar_columna(df: pd.DataFrame, candidatos: list) -> str | None:
@@ -184,7 +243,7 @@ def sincronizar_usd():
         print(f"  → {r['fecha_chequeo'].date()} | precio: ${r['precio']}")
 
     # ── 5. Obtener tipo de cambio A3500 ────────────────────────────────────────
-    print("\n[4/4] Obteniendo tipo de cambio A3500 del BCRA ...")
+    print("\n[4/4] Obteniendo tipo de cambio A3500 ...")
     df_tc = obtener_dolar_a3500()
 
     # ── 6. Calcular price_usd para cada fila nueva ────────────────────────────
