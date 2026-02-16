@@ -22,11 +22,10 @@ import requests
 import io
 import os
 import warnings
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Suprimir advertencias de SSL
 warnings.filterwarnings('ignore', message='Unverified HTTPS request')
-
 
 # ── RUTAS ─────────────────────────────────────────────────────────────────────
 DIR_DATA           = "data"
@@ -38,7 +37,7 @@ ARCHIVO_USD        = os.path.join(DIR_DATA, "historico_precios_usd.csv")
 URL_MATBA_ROFEX = "https://matbarofex.com.ar/DolarA3500/BuscarCotizacion"
 
 # API estadística del BCRA — serie 7935 = Tipo de cambio de referencia (A 3500) vendedor
-URL_API_BCRA = "https://api.bcra.gob.ar/estadisticas/v2.0/datosvariable/7935/2010-01-01/{today}"
+URL_API_BCRA = "https://api.bcra.gob.ar/estadisticas/v2.0/datosvariable/7935/{start_date}/{end_date}"
 
 # El BCRA publica el XLS histórico completo en este endpoint (backup)
 URL_XLS_BCRA = "https://www.bcra.gob.ar/archivos/Pdfs/PublicacionesEstadisticas/com3500.xls"
@@ -55,8 +54,9 @@ def descargar_dolar_matbarofex() -> pd.DataFrame:
                        headers={"User-Agent": "Mozilla/5.0"})
     resp.raise_for_status()
     
-    # Parsear la tabla HTML usando pandas
-    tables = pd.read_html(io.StringIO(resp.text))
+    # Parsear la tabla HTML usando pandas con motor explícito
+    # Usar lxml directamente en lugar de BeautifulSoup para evitar el error de SoupStrainer
+    tables = pd.read_html(io.StringIO(resp.text), flavor='lxml')
     
     if not tables:
         raise ValueError("No se encontraron tablas en la página de Matba Rofex")
@@ -87,8 +87,14 @@ def descargar_dolar_api() -> pd.DataFrame:
     Alternativa: API JSON del BCRA.
     Devuelve DataFrame con columnas [fecha, tc_vendedor].
     """
-    today = datetime.today().strftime("%Y-%m-%d")
-    url = URL_API_BCRA.format(today=today)
+    # Usar rango más corto: últimos 2 años en lugar de desde 2010
+    end_date = datetime.today()
+    start_date = end_date - timedelta(days=730)  # 2 años
+    
+    url = URL_API_BCRA.format(
+        start_date=start_date.strftime("%Y-%m-%d"),
+        end_date=end_date.strftime("%Y-%m-%d")
+    )
     print(f"  Intentando API BCRA: {url} ...")
     
     # Deshabilitar verificación SSL para evitar problemas en GitHub Actions
@@ -119,10 +125,9 @@ def descargar_dolar_xls() -> pd.DataFrame:
                         headers={"User-Agent": "Mozilla/5.0"})
     resp.raise_for_status()
 
-    # Leer el XLS saltando las primeras filas hasta encontrar el header
+    # Leer el XLS saltando las primeras 3 filas (headers/descripción)
     xls = pd.read_excel(io.BytesIO(resp.content), sheet_name=0, 
-                       skiprows=3,  # ← Saltar las primeras 3 filas
-                       engine="xlrd")
+                       skiprows=3, engine="xlrd")
 
     # Normalizar nombres de columna a minúsculas sin espacios
     xls.columns = [str(c).strip().lower().replace(" ", "_") for c in xls.columns]
@@ -131,7 +136,8 @@ def descargar_dolar_xls() -> pd.DataFrame:
     # Detectar columna de fecha y columna de TC vendedor automáticamente
     col_fecha = _detectar_columna(xls, ["fecha", "date", "día"])
     col_tc    = _detectar_columna(xls, ["venta", "vendedor", "tc_vendedor",
-                                         "tipo_de_cambio_de_referencia_-_en_dolares_-_venta",
+                                         "tipo_de_cambio_de_referencia",
+                                         "tipo_de_cambio",
                                          "tc_ref_venta", "valor"])
 
     if col_fecha is None or col_tc is None:
