@@ -265,17 +265,25 @@ def sincronizar_usd():
     df_nuevas_usd = df_nuevas_usd.reindex(columns=cols_finales)
 
     # ── 8. Escribir al CSV USD ─────────────────────────────────────────────────
-    os.makedirs(DIR_DATA, exist_ok=True)
+os.makedirs(DIR_DATA, exist_ok=True)
 
-    if os.path.exists(ARCHIVO_USD):
-        # Append sin header
-        df_nuevas_usd.to_csv(ARCHIVO_USD, mode="a", index=False, header=False)
-    else:
-        # Crear archivo nuevo con header
-        df_nuevas_usd.to_csv(ARCHIVO_USD, index=False)
-
-    print(f"\n✅ {len(df_nuevas_usd)} fila(s) agregada(s) a {ARCHIVO_USD}")
-    print(f"{'='*60}\n")
+if os.path.exists(ARCHIVO_USD):
+    # Verificar si el archivo termina con salto de línea
+    with open(ARCHIVO_USD, 'rb') as f:
+        f.seek(-1, 2)  # Ir al último byte
+        last_char = f.read(1)
+        needs_newline = last_char != b'\n'
+    
+    # Si no termina con \n, agregarlo
+    if needs_newline:
+        with open(ARCHIVO_USD, 'a') as f:
+            f.write('\n')
+    
+    # Append sin header
+    df_nuevas_usd.to_csv(ARCHIVO_USD, mode="a", index=False, header=False)
+else:
+    # Crear archivo nuevo con header
+    df_nuevas_usd.to_csv(ARCHIVO_USD, index=False)
 
 
 if __name__ == "__main__":
