@@ -41,3 +41,4 @@ indice_tiempo,idempresa,cuit,empresa,direccion,localidad,provincia,region,idprod
 2026-02,10667,30-71485936-2,UNITECPROCOM SA,AV EVA PERON 7501,FLORENCIO VARELA,BUENOS AIRES,,2,Nafta (súper) entre 92 y 95 Ron,2,Diurno,1668,2026-02-07 11:01:00,2,YPF,-34.85086,-58.27908,"{""type"":""Point"",""coordinates"":[-58.27908,-34.85086]}",0.0,2026-02-15
 
 2026-02,10667,30-71485936-2,UNITECPROCOM SA,AV EVA PERON 7501,FLORENCIO VARELA,BUENOS AIRES,,2,Nafta (súper) entre 92 y 95 Ron,2,Diurno,1699,2026-02-16 07:11:00,2,YPF,-34.85086,-58.27908,"{""type"":""Point"",""coordinates"":[-58.27908,-34.85086]}",1.86,2026-02-16
+2026-02,10667,30-71485936-2,UNITECPROCOM SA,AV EVA PERON 7501,FLORENCIO VARELA,BUENOS AIRES,,2,Nafta (súper) entre 92 y 95 Ron,2,Diurno,1699,2026-02-16 07:11:00,2,YPF,-34.85086,-58.27908,"{""type"":""Point"",""coordinates"":[-58.27908,-34.85086]}",0.0,2026-02-17
