@@ -33,115 +33,72 @@ ARCHIVO_PRECIOS    = os.path.join(DIR_DATA, "historico_precios.csv")
 ARCHIVO_USD        = os.path.join(DIR_DATA, "historico_precios_usd.csv")
 
 # ── FUENTES DEL DÓLAR A3500 ───────────────────────────────────────────────────
-# Matba Rofex - Fuente principal (más simple y confiable)
 URL_MATBA_ROFEX = "https://matbarofex.com.ar/DolarA3500/BuscarCotizacion"
-
-# El BCRA publica el XLS histórico completo en este endpoint (backup)
 URL_XLS_BCRA = "https://www.bcra.gob.ar/archivos/Pdfs/PublicacionesEstadisticas/com3500.xls"
 
 
 def descargar_dolar_matbarofex() -> pd.DataFrame:
-    """
-    Scrapea la tabla de cotizaciones A3500 desde Matba Rofex.
-    Devuelve DataFrame con columnas [fecha, tc_vendedor].
-    """
     print(f"  Scrapeando Matba Rofex: {URL_MATBA_ROFEX} ...")
-    
-    resp = requests.get(URL_MATBA_ROFEX, timeout=20, 
+    resp = requests.get(URL_MATBA_ROFEX, timeout=20,
                        headers={"User-Agent": "Mozilla/5.0"})
     resp.raise_for_status()
-    
-    # Usar BeautifulSoup directamente para mayor control
     soup = BeautifulSoup(resp.text, 'html.parser')
-    
-    # Buscar la tabla (usualmente tiene clase o id específico)
     table = soup.find('table')
     if not table:
         raise ValueError("No se encontró tabla en la página de Matba Rofex")
-    
-    # Extraer filas
     rows = table.find_all('tr')
     if len(rows) < 2:
         raise ValueError("La tabla de Matba Rofex no tiene suficientes filas")
-    
-    # Parsear datos
     data = []
-    for row in rows[1:]:  # Saltar header
+    for row in rows[1:]:
         cols = row.find_all('td')
         if len(cols) >= 2:
             fecha_str = cols[0].get_text(strip=True)
             tc_str = cols[1].get_text(strip=True)
             data.append({'fecha': fecha_str, 'tc_vendedor': tc_str})
-    
     if not data:
         raise ValueError("No se pudieron extraer datos de la tabla")
-    
     df = pd.DataFrame(data)
-    
-    # Parsear fecha (formato dd/mm/yyyy)
     df['fecha'] = pd.to_datetime(df['fecha'], format='%d/%m/%Y', errors='coerce')
-    
-    # Parsear cotización (formato: 1.395,4205 - punto como separador de miles, coma decimal)
     df['tc_vendedor'] = df['tc_vendedor'].astype(str).str.replace('.', '', regex=False)
     df['tc_vendedor'] = df['tc_vendedor'].str.replace(',', '.', regex=False)
     df['tc_vendedor'] = pd.to_numeric(df['tc_vendedor'], errors='coerce')
-    
     df = df.dropna(subset=['fecha', 'tc_vendedor'])
     df = df.sort_values('fecha').reset_index(drop=True)
-    
     print(f"  Matba Rofex OK: {len(df)} filas, desde {df['fecha'].min().date()} hasta {df['fecha'].max().date()}")
     return df
 
 
 def descargar_dolar_xls() -> pd.DataFrame:
-    """
-    Descarga el XLS histórico del BCRA y devuelve un DataFrame con columnas [fecha, tc_vendedor].
-    Filtra solo datos desde 2026-01-01 hasta hoy para reducir el tamaño.
-    """
     print(f"  Descargando XLS BCRA A3500 desde {URL_XLS_BCRA} ...")
     resp = requests.get(URL_XLS_BCRA, timeout=30, verify=False,
                         headers={"User-Agent": "Mozilla/5.0"})
     resp.raise_for_status()
-
-    # Leer el XLS saltando las primeras 3 filas (headers/descripción)
-    xls = pd.read_excel(io.BytesIO(resp.content), sheet_name=0, 
+    xls = pd.read_excel(io.BytesIO(resp.content), sheet_name=0,
                        skiprows=3, engine="xlrd")
-
-    # Normalizar nombres de columna a minúsculas sin espacios
     xls.columns = [str(c).strip().lower().replace(" ", "_") for c in xls.columns]
     print(f"  Columnas XLS: {list(xls.columns)}")
-
-    # Detectar columna de fecha y columna de TC vendedor automáticamente
     col_fecha = _detectar_columna(xls, ["fecha", "date", "día"])
     col_tc    = _detectar_columna(xls, ["venta", "vendedor", "tc_vendedor",
                                          "tipo_de_cambio_de_referencia",
                                          "tipo_de_cambio",
                                          "tc_ref_venta", "valor"])
-
     if col_fecha is None or col_tc is None:
         raise ValueError(f"No se pudo identificar columnas de fecha/TC. Columnas disponibles: {list(xls.columns)}")
-
     df = xls[[col_fecha, col_tc]].copy()
     df.columns = ["fecha", "tc_vendedor"]
     df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce", dayfirst=True)
     df["tc_vendedor"] = pd.to_numeric(df["tc_vendedor"], errors="coerce")
     df = df.dropna(subset=["fecha", "tc_vendedor"])
-    
-    # Filtrar solo desde 2026-01-01 hasta hoy
     fecha_inicio = pd.Timestamp('2026-01-01')
     fecha_hoy = pd.Timestamp(datetime.now().date())
     df = df[(df["fecha"] >= fecha_inicio) & (df["fecha"] <= fecha_hoy)]
-    
     df = df.sort_values("fecha").reset_index(drop=True)
     print(f"  XLS OK: {len(df)} filas, desde {df['fecha'].min().date()} hasta {df['fecha'].max().date()}")
     return df
 
 
 def obtener_dolar_a3500() -> pd.DataFrame:
-    """
-    Intenta obtener el tipo de cambio A3500 de múltiples fuentes.
-    Orden de prioridad: Matba Rofex → XLS BCRA
-    """
     try:
         return descargar_dolar_matbarofex()
     except Exception as e_matba:
@@ -157,13 +114,10 @@ def obtener_dolar_a3500() -> pd.DataFrame:
 
 
 def _detectar_columna(df: pd.DataFrame, candidatos: list) -> str | None:
-    """Devuelve el nombre de la primera columna que coincida con algún candidato."""
     cols_lower = {c.lower(): c for c in df.columns}
     for cand in candidatos:
-        # Coincidencia exacta
         if cand in cols_lower:
             return cols_lower[cand]
-        # Coincidencia parcial
         for col_l, col_orig in cols_lower.items():
             if cand in col_l:
                 return col_orig
@@ -171,10 +125,6 @@ def _detectar_columna(df: pd.DataFrame, candidatos: list) -> str | None:
 
 
 def get_tc_para_fecha(fecha: pd.Timestamp, df_tc: pd.DataFrame) -> float | None:
-    """
-    Devuelve el tipo de cambio A3500 para una fecha dada.
-    Si la fecha exacta no existe (finde, feriado), usa el último día hábil anterior.
-    """
     df_prev = df_tc[df_tc["fecha"] <= fecha]
     if df_prev.empty:
         return None
@@ -205,11 +155,9 @@ def sincronizar_usd():
     if os.path.exists(ARCHIVO_USD):
         df_usd = pd.read_csv(ARCHIVO_USD)
         df_usd["fecha_chequeo"] = pd.to_datetime(df_usd["fecha_chequeo"], errors="coerce")
-        # Conjunto de fechas ya procesadas
         fechas_ya_en_usd = set(df_usd["fecha_chequeo"].dt.date.dropna())
         print(f"  {len(df_usd)} filas ya en {ARCHIVO_USD}")
     else:
-        # Crear el archivo USD con los mismos headers + price_usd
         df_usd = pd.DataFrame(columns=list(df_precios.columns) + ["price_usd"])
         fechas_ya_en_usd = set()
         print(f"  Archivo {ARCHIVO_USD} no existe, se creará.")
@@ -236,16 +184,13 @@ def sincronizar_usd():
     for _, fila in filas_nuevas.iterrows():
         fecha = fila["fecha_chequeo"]
         precio_ars = fila["precio"]
-
         tc = get_tc_para_fecha(fecha, df_tc)
-
         if tc is None or tc == 0:
             print(f"  ⚠️  Sin TC para {fecha.date()} — se asigna NaN")
             price_usd = float("nan")
         else:
             price_usd = round(precio_ars / tc, 4)
             print(f"  ✓  {fecha.date()} | ${precio_ars} ARS / {tc:.2f} A3500 = ${price_usd:.4f} USD")
-
         fila_nueva = fila.copy()
         fila_nueva["price_usd"] = price_usd
         resultados.append(fila_nueva)
@@ -255,36 +200,30 @@ def sincronizar_usd():
     # ── 7. Asegurar orden de columnas igual al CSV USD ─────────────────────────
     if "price_usd" not in df_usd.columns:
         df_usd["price_usd"] = float("nan")
-
-    # Usar el orden de columnas del CSV USD existente
     cols_finales = list(df_usd.columns)
     for col in df_nuevas_usd.columns:
         if col not in cols_finales:
             cols_finales.append(col)
-
     df_nuevas_usd = df_nuevas_usd.reindex(columns=cols_finales)
 
     # ── 8. Escribir al CSV USD ─────────────────────────────────────────────────
-os.makedirs(DIR_DATA, exist_ok=True)
+    os.makedirs(DIR_DATA, exist_ok=True)
 
-if os.path.exists(ARCHIVO_USD):
-    # Verificar si el archivo termina con salto de línea
-    with open(ARCHIVO_USD, 'rb') as f:
-        f.seek(-1, 2)  # Ir al último byte
-        last_char = f.read(1)
-        needs_newline = last_char != b'\n'
-    
-    # Si no termina con \n, agregarlo
-    if needs_newline:
-        with open(ARCHIVO_USD, 'a') as f:
-            f.write('\n')
-    
-    # Append sin header
-    df_nuevas_usd.to_csv(ARCHIVO_USD, mode="a", index=False, header=False)
-else:
-    # Crear archivo nuevo con header
-    df_nuevas_usd.to_csv(ARCHIVO_USD, index=False)
+    if os.path.exists(ARCHIVO_USD):
+        with open(ARCHIVO_USD, 'rb') as f:
+            f.seek(-1, 2)
+            last_char = f.read(1)
+            needs_newline = last_char != b'\n'
+        if needs_newline:
+            with open(ARCHIVO_USD, 'a') as f:
+                f.write('\n')
+        df_nuevas_usd.to_csv(ARCHIVO_USD, mode="a", index=False, header=False)
+    else:
+        df_nuevas_usd.to_csv(ARCHIVO_USD, index=False)
+
+    print(f"\n✅ {len(df_nuevas_usd)} fila(s) agregada(s) a {ARCHIVO_USD}")
 
 
 if __name__ == "__main__":
     sincronizar_usd()
+  
