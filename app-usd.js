@@ -77,9 +77,7 @@ function parseCSV(text) {
             row[header] = val.replace(/^"|"$/g, '').trim();
         });
 
-        if (row.empresa && row.empresa.includes('UNITECPROCOM')) {
-            data.push(row);
-        }
+        data.push(row);
     }
     return data;
 }
@@ -160,7 +158,7 @@ function calculateStats(data) {
     return {
         current: currentPrice,
         currentDate: currentData.fecha_chequeo,
-        location: 'GRAN BUENOS AIRES',
+        location: `${currentData.localidad || ''}, ${currentData.provincia || ''}`.trim().replace(/^,|,$/g, '').trim(),
         maxPrice,
         maxDate: maxData.fecha_chequeo,
         minPrice,
