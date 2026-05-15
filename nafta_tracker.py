@@ -25,7 +25,14 @@ ARCHIVO_HISTORICO = "data/historico_precios.csv"
 
 # --- CONFIGURACIÓN DE BÚSQUEDA ---
 BUSCAR_PRODUCTO = 'Nafta (súper) entre 92 y 95 Ron'
-BUSCAR_RAZON_SOCIAL = 'UNITECPROCOM SA'
+
+# UNITEC suspendida temporalmente — no está actualizando datos en la fuente oficial
+# BUSCAR_RAZON_SOCIAL = 'UNITECPROCOM SA'
+
+# Nueva estación activa: GAS IMPULSO S.A. — Ruta 25 Nro. 619, Pilar, Buenos Aires
+# idempresa: 1519 | turno: Diurno
+BUSCAR_RAZON_SOCIAL = 'GAS IMPULSO'
+BUSCAR_IDEMPRESA = '1519'
 
 # --- Claves de Telegram ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -77,10 +84,17 @@ def main():
     df['producto'] = df['producto'].astype(str).str.strip()
     df['empresa'] = df['empresa'].astype(str).str.strip()
 
-    df_filtrado = df[
-        (df['producto'].str.contains(BUSCAR_PRODUCTO, case=False, na=False, regex=False)) &       
-        (df['empresa'].str.contains(BUSCAR_RAZON_SOCIAL, case=False, na=False, regex=False))
-    ].copy()
+    # Filtro por idempresa (más robusto) + producto. Fallback a nombre si no existe la columna.
+    if 'idempresa' in df.columns:
+        df_filtrado = df[
+            (df['producto'].str.contains(BUSCAR_PRODUCTO, case=False, na=False, regex=False)) &
+            (df['idempresa'].astype(str).str.strip() == BUSCAR_IDEMPRESA)
+        ].copy()
+    else:
+        df_filtrado = df[
+            (df['producto'].str.contains(BUSCAR_PRODUCTO, case=False, na=False, regex=False)) &
+            (df['empresa'].str.contains(BUSCAR_RAZON_SOCIAL, case=False, na=False, regex=False))
+        ].copy()
     
     if df_filtrado.empty:
         print(f"❌ No se encontraron datos para: {BUSCAR_RAZON_SOCIAL}")
