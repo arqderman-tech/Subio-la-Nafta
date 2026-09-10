@@ -34,7 +34,7 @@ ARCHIVO_USD        = os.path.join(DIR_DATA, "historico_precios_usd.csv")
 
 # ── FUENTES DEL DÓLAR A3500 ───────────────────────────────────────────────────
 URL_MATBA_ROFEX = "https://matbarofex.com.ar/DolarA3500/BuscarCotizacion"
-URL_XLS_BCRA = "https://www.bcra.gob.ar/archivos/Pdfs/PublicacionesEstadisticas/com3500.xls"
+URL_XLS_BCRA = "https://www.bcra.gob.ar/archivos/Pdfs/publicacionesestadisticas/com3500.xls"
 
 
 def descargar_dolar_matbarofex() -> pd.DataFrame:
@@ -65,6 +65,16 @@ def descargar_dolar_matbarofex() -> pd.DataFrame:
     df['tc_vendedor'] = pd.to_numeric(df['tc_vendedor'], errors='coerce')
     df = df.dropna(subset=['fecha', 'tc_vendedor'])
     df = df.sort_values('fecha').reset_index(drop=True)
+    if df.empty:
+        # Matba Rofex se renombró a "A3 Mercados" y esta URL vieja ahora
+        # redirige a la home nueva. soup.find('table') igual encuentra UNA
+        # tabla ahí (futuros agro/dólar), pero ninguna fila tiene el formato
+        # fecha/TC esperado, así que terminamos acá con 0 filas válidas.
+        # Antes esto no tiraba excepción y el fallback a BCRA nunca se activaba.
+        raise ValueError(
+            "La tabla encontrada no tiene filas con formato fecha/TC válido "
+            "(probablemente cambió la estructura de la página de Matba Rofex / A3 Mercados)"
+        )
     print(f"  Matba Rofex OK: {len(df)} filas, desde {df['fecha'].min().date()} hasta {df['fecha'].max().date()}")
     return df
 
@@ -99,17 +109,21 @@ def descargar_dolar_xls() -> pd.DataFrame:
 
 
 def obtener_dolar_a3500() -> pd.DataFrame:
+    # BCRA primero: es la fuente oficial y estable. Matba Rofex se renombró a
+    # "A3 Mercados" y la página que scrapeábamos ya no publica la tabla
+    # histórica en el mismo formato, así que la dejamos solo como respaldo
+    # por si algún día vuelve a andar.
     try:
-        return descargar_dolar_matbarofex()
-    except Exception as e_matba:
-        print(f"  Matba Rofex falló ({e_matba}), probando XLS ...")
+        return descargar_dolar_xls()
+    except Exception as e_xls:
+        print(f"  XLS BCRA falló ({e_xls}), probando Matba Rofex ...")
         try:
-            return descargar_dolar_xls()
-        except Exception as e_xls:
+            return descargar_dolar_matbarofex()
+        except Exception as e_matba:
             raise RuntimeError(
                 f"No se pudo obtener el tipo de cambio A3500.\n"
-                f"  Error Matba Rofex: {e_matba}\n"
-                f"  Error XLS BCRA: {e_xls}"
+                f"  Error XLS BCRA: {e_xls}\n"
+                f"  Error Matba Rofex: {e_matba}"
             )
 
 
@@ -155,16 +169,27 @@ def sincronizar_usd():
     if os.path.exists(ARCHIVO_USD):
         df_usd = pd.read_csv(ARCHIVO_USD)
         df_usd["fecha_chequeo"] = pd.to_datetime(df_usd["fecha_chequeo"], errors="coerce")
-        fechas_ya_en_usd = set(df_usd["fecha_chequeo"].dt.date.dropna())
+        # Fechas que ya están en el CSV Y con un price_usd válido (no NaN/vacío).
+        # Las que están pero con price_usd faltante (p.ej. por la falla de
+        # Matba Rofex del 2026-09-01 al 09-08) se vuelven a intentar.
+        tiene_usd_valido = pd.to_numeric(df_usd.get("price_usd"), errors="coerce").notna()
+        fechas_ya_en_usd = set(df_usd.loc[tiene_usd_valido, "fecha_chequeo"].dt.date.dropna())
+        fechas_a_reintentar = set(df_usd.loc[~tiene_usd_valido, "fecha_chequeo"].dt.date.dropna())
+        if fechas_a_reintentar:
+            print(f"  {len(fechas_a_reintentar)} fecha(s) con price_usd faltante, se van a reintentar: "
+                  f"{sorted(fechas_a_reintentar)}")
+            # Sacamos esas filas del CSV existente para volver a escribirlas con el dato correcto
+            df_usd = df_usd[tiene_usd_valido].copy()
         print(f"  {len(df_usd)} filas ya en {ARCHIVO_USD}")
     else:
         df_usd = pd.DataFrame(columns=list(df_precios.columns) + ["price_usd"])
         fechas_ya_en_usd = set()
+        fechas_a_reintentar = set()
         print(f"  Archivo {ARCHIVO_USD} no existe, se creará.")
 
-    # ── 4. Detectar filas nuevas ───────────────────────────────────────────────
+    # ── 4. Detectar filas nuevas (+ las que hay que reintentar) ────────────────
     filas_nuevas = df_precios[
-        ~df_precios["fecha_chequeo"].dt.date.isin(fechas_ya_en_usd)
+        (~df_precios["fecha_chequeo"].dt.date.isin(fechas_ya_en_usd))
     ].copy()
 
     if filas_nuevas.empty:
@@ -207,21 +232,20 @@ def sincronizar_usd():
     df_nuevas_usd = df_nuevas_usd.reindex(columns=cols_finales)
 
     # ── 8. Escribir al CSV USD ─────────────────────────────────────────────────
+    # Reescribimos el archivo completo (en vez de solo appendear al final) porque
+    # además de agregar filas nuevas, puede que hayamos sacado filas viejas con
+    # price_usd faltante (fechas_a_reintentar) que ahora se recalculan con su
+    # fecha_chequeo original — si solo appendeáramos, quedarían duplicadas.
     os.makedirs(DIR_DATA, exist_ok=True)
 
-    if os.path.exists(ARCHIVO_USD):
-        with open(ARCHIVO_USD, 'rb') as f:
-            f.seek(-1, 2)
-            last_char = f.read(1)
-            needs_newline = last_char != b'\n'
-        if needs_newline:
-            with open(ARCHIVO_USD, 'a') as f:
-                f.write('\n')
-        df_nuevas_usd.to_csv(ARCHIVO_USD, mode="a", index=False, header=False)
-    else:
-        df_nuevas_usd.to_csv(ARCHIVO_USD, index=False)
+    df_final = pd.concat([df_usd, df_nuevas_usd], ignore_index=True)
+    df_final = df_final.sort_values("fecha_chequeo").reset_index(drop=True)
+    df_final.to_csv(ARCHIVO_USD, index=False)
 
-    print(f"\n✅ {len(df_nuevas_usd)} fila(s) agregada(s) a {ARCHIVO_USD}")
+    n_reintentadas = len(fechas_a_reintentar)
+    n_nuevas = len(df_nuevas_usd) - n_reintentadas
+    print(f"\n✅ {ARCHIVO_USD} actualizado: {n_nuevas} fila(s) nueva(s)"
+          + (f", {n_reintentadas} recalculada(s)" if n_reintentadas else "") + ".")
 
 
 if __name__ == "__main__":
