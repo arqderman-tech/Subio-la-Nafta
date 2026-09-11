@@ -39,6 +39,7 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git add data/historico_precios.csv
           git add data/historico_precios_usd.csv
+          git add data/historico_brent.csv
           if git diff --staged --quiet; then
             echo "No hubo cambios para commitear."
           else
