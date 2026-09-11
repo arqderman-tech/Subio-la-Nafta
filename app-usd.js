@@ -1,8 +1,13 @@
 // URL del CSV en GitHub (raw) - VERSION USD
 const CSV_URL = 'https://raw.githubusercontent.com/arqderman-tech/Subio-la-Nafta/main/data/historico_precios_usd.csv';
+// Histórico del precio del Brent (USD/barril), generado por brent_sync.py
+const BRENT_CSV_URL = 'https://raw.githubusercontent.com/arqderman-tech/Subio-la-Nafta/main/data/historico_brent.csv';
 
 // Variables globales
 let allData = [];
+let brentData = [];
+let showBrent = false;
+let currentPeriod = 30;
 let chart = null;
 
 // --- UTILIDADES ---
@@ -99,6 +104,58 @@ async function fetchData() {
         console.error('Error en fetchData:', error);
         throw error;
     }
+}
+
+// --- BRENT (histórico USD/barril, para superponer al gráfico) ---
+function parseBrentCSV(text) {
+    // CSV simple "fecha,precio_brent" generado por brent_sync.py — sin
+    // complicaciones de comillas/geojson como el CSV principal.
+    const lines = text.trim().split('\n');
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const [fecha, precio] = line.split(',');
+        const ts = new Date(fecha + 'T12:00:00').getTime();
+        const val = parseFloat(precio);
+        if (!isNaN(ts) && !isNaN(val)) {
+            data.push({ ts, precio: val });
+        }
+    }
+    data.sort((a, b) => a.ts - b.ts);
+    return data;
+}
+
+async function fetchBrentData() {
+    try {
+        const response = await fetch(BRENT_CSV_URL);
+        if (!response.ok) throw new Error('No se pudo cargar el histórico del Brent');
+        const text = await response.text();
+        return parseBrentCSV(text);
+    } catch (error) {
+        console.warn('Brent no disponible:', error);
+        return [];
+    }
+}
+
+// Devuelve el precio del Brent vigente en o antes de la fecha dada
+// (último cierre disponible; el Brent no cotiza fines de semana/feriados).
+function getBrentPriceAt(dateStr, brentArr) {
+    if (!brentArr || brentArr.length === 0) return null;
+    const dateOnly = dateStr.split(' ')[0];
+    const target = new Date(dateOnly + 'T12:00:00').getTime();
+
+    let lo = 0, hi = brentArr.length - 1, resultado = null;
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (brentArr[mid].ts <= target) {
+            resultado = brentArr[mid].precio;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return resultado;
 }
 
 // --- LÓGICA DE CÁLCULOS ---
@@ -245,6 +302,7 @@ function filterDataByPeriod(data, period) {
 }
 
 function createChart(data, period = 30) {
+    currentPeriod = period;
     const canvas = document.getElementById('priceChart');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -253,30 +311,53 @@ function createChart(data, period = 30) {
     const labels = filteredData.map(d => formatDateShort(d.fecha_chequeo));
     const prices = filteredData.map(d => parseFloat(d.price_usd));
 
+    const datasets = [{
+        label: 'Nafta (USD)',
+        data: prices,
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.1,
+        yAxisID: 'y'
+    }];
+
+    const scales = {
+        y: {
+            ticks: { callback: (value) => `USD ${value.toFixed(2)}` }
+        }
+    };
+
+    if (showBrent && brentData.length > 0) {
+        const brentPrices = filteredData.map(d => getBrentPriceAt(d.fecha_chequeo, brentData));
+        datasets.push({
+            label: 'Brent (USD/barril)',
+            data: brentPrices,
+            borderColor: '#f59e0b',
+            backgroundColor: 'rgba(245, 158, 11, 0.08)',
+            borderWidth: 2,
+            borderDash: [5, 3],
+            fill: false,
+            tension: 0.1,
+            pointRadius: 0,
+            yAxisID: 'yBrent'
+        });
+        scales.yBrent = {
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            ticks: { callback: (value) => `$${value.toFixed(0)}` }
+        };
+    }
+
     if (chart) chart.destroy();
     chart = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Precio (USD)',
-                data: prices,
-                borderColor: '#3b82f6',
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                borderWidth: 2,
-                fill: true,
-                tension: 0.1
-            }]
-        },
+        data: { labels, datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: {
-                    ticks: { callback: (value) => `USD ${value.toFixed(2)}` }
-                }
-            }
+            plugins: { legend: { display: datasets.length > 1 } },
+            scales
         }
     });
 }
@@ -298,6 +379,24 @@ function setupChartControls() {
     });
 }
 
+function setupBrentToggle() {
+    const toggle = document.getElementById('toggle-brent');
+    const label = document.getElementById('brent-toggle-label');
+    if (!toggle) return;
+
+    if (brentData.length === 0) {
+        toggle.disabled = true;
+        if (label) label.classList.add('disabled');
+        return;
+    }
+
+    toggle.addEventListener('change', () => {
+        showBrent = toggle.checked;
+        if (label) label.classList.toggle('active', showBrent);
+        createChart(allData, currentPeriod);
+    });
+}
+
 // --- INICIALIZACIÓN ---
 async function init() {
     const loading = document.getElementById('loading');
@@ -305,13 +404,16 @@ async function init() {
     const error = document.getElementById('error');
 
     try {
-        allData = await fetchData();
+        const [naftaData, brent] = await Promise.all([fetchData(), fetchBrentData()]);
+        allData = naftaData;
+        brentData = brent;
         if (allData.length === 0) throw new Error('No se encontraron datos de la empresa');
 
         const stats = calculateStats(allData);
         updateUI(stats);
         createChart(allData, 30);
         setupChartControls();
+        setupBrentToggle();
 
         if (loading) loading.style.display = 'none';
         if (mainContent) mainContent.style.display = 'block';

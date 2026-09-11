@@ -284,6 +284,40 @@ body {
     border-color: var(--color-primary);
 }
 
+.brent-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    border: 1px solid var(--color-border);
+    background: white;
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-left: 0.25rem;
+    user-select: none;
+}
+
+.brent-toggle input[type="checkbox"] {
+    accent-color: var(--color-warning);
+    cursor: pointer;
+}
+
+.brent-toggle:hover { background: var(--color-bg); }
+
+.brent-toggle.active {
+    background: rgba(245, 158, 11, 0.12);
+    color: #92600a;
+    border-color: var(--color-warning);
+}
+
+.brent-toggle.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .chart-container {
     margin-top: 1.5rem;
     position: relative;
