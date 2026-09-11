@@ -12,6 +12,13 @@ try:
 except ImportError:
     _USD_SYNC_DISPONIBLE = False
 
+# Sincronización automática del histórico de precio del Brent
+try:
+    from brent_sync import sincronizar_brent
+    _BRENT_SYNC_DISPONIBLE = True
+except ImportError:
+    _BRENT_SYNC_DISPONIBLE = False
+
 # --- CONFIGURACIÓN DE CRÉDITOS X (TWITTER) ---
 X_API_KEY = os.getenv("X_API_KEY")
 X_API_SECRET = os.getenv("X_API_SECRET")
@@ -230,7 +237,16 @@ def main():
             print(f"⚠️ usd_sync falló: {e_usd}")
     else:
         print("⚠️ usd_sync.py no encontrado — el CSV en USD no se actualizó.")
-    
+
+    # ── Sincronizar histórico del Brent ─────────────────────────────────────
+    if _BRENT_SYNC_DISPONIBLE:
+        try:
+            sincronizar_brent()
+        except Exception as e_brent:
+            print(f"⚠️ brent_sync falló: {e_brent}")
+    else:
+        print("⚠️ brent_sync.py no encontrado — el histórico del Brent no se actualizó.")
+
     print(f"--- Finalizado: {datetime.now()} ---")
 
 if __name__ == "__main__":
