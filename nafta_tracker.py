@@ -19,6 +19,13 @@ try:
 except ImportError:
     _BRENT_SYNC_DISPONIBLE = False
 
+# Sincronización automática del índice de inflación (IPC INDEC)
+try:
+    from inflacion_sync import sincronizar_inflacion
+    _INFLACION_SYNC_DISPONIBLE = True
+except ImportError:
+    _INFLACION_SYNC_DISPONIBLE = False
+
 # --- CONFIGURACIÓN DE CRÉDITOS X (TWITTER) ---
 X_API_KEY = os.getenv("X_API_KEY")
 X_API_SECRET = os.getenv("X_API_SECRET")
@@ -246,6 +253,15 @@ def main():
             print(f"⚠️ brent_sync falló: {e_brent}")
     else:
         print("⚠️ brent_sync.py no encontrado — el histórico del Brent no se actualizó.")
+
+    # ── Sincronizar índice de inflación ─────────────────────────────────────
+    if _INFLACION_SYNC_DISPONIBLE:
+        try:
+            sincronizar_inflacion()
+        except Exception as e_inf:
+            print(f"⚠️ inflacion_sync falló: {e_inf}")
+    else:
+        print("⚠️ inflacion_sync.py no encontrado — el índice de inflación no se actualizó.")
 
     print(f"--- Finalizado: {datetime.now()} ---")
 
