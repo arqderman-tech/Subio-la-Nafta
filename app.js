@@ -1,9 +1,53 @@
 // URL del CSV en GitHub (raw)
 const CSV_URL = 'https://raw.githubusercontent.com/arqderman-tech/Subio-la-Nafta/main/data/historico_precios.csv';
+// Histórico del índice de inflación (IPC INDEC), generado por inflacion_sync.py
+const INFLACION_CSV_URL = 'https://raw.githubusercontent.com/arqderman-tech/Subio-la-Nafta/main/data/historico_inflacion.csv';
 
 // Variables globales
 let allData = [];
+let inflacionData = [];
+let showInflacion = false;
+let currentPeriod = '1m';
 let chart = null;
+
+// Filtra por período relativo a la fecha del último registro.
+// Períodos: '1m', '3m', '6m', 'ytd', '1y'
+function filterDataByPeriod(data, period) {
+    if (!data || data.length === 0) return data;
+
+    const lastDateOnly = data[data.length - 1].fecha_chequeo.split(' ')[0];
+    const lastDate = new Date(lastDateOnly + 'T12:00:00');
+    let cutoff;
+
+    switch (period) {
+        case '1m':
+            cutoff = new Date(lastDate);
+            cutoff.setMonth(cutoff.getMonth() - 1);
+            break;
+        case '3m':
+            cutoff = new Date(lastDate);
+            cutoff.setMonth(cutoff.getMonth() - 3);
+            break;
+        case '6m':
+            cutoff = new Date(lastDate);
+            cutoff.setMonth(cutoff.getMonth() - 6);
+            break;
+        case 'ytd':
+            cutoff = new Date(lastDate.getFullYear(), 0, 1);
+            break;
+        case '1y':
+            cutoff = new Date(lastDate);
+            cutoff.setFullYear(cutoff.getFullYear() - 1);
+            break;
+        default:
+            return data;
+    }
+
+    return data.filter(d => {
+        const dateOnly = d.fecha_chequeo.split(' ')[0];
+        return new Date(dateOnly + 'T12:00:00') >= cutoff;
+    });
+}
 
 // --- UTILIDADES ---
 function formatPrice(price) {
@@ -92,6 +136,79 @@ async function fetchData() {
         console.error('Error en fetchData:', error);
         throw error;
     }
+}
+
+// --- INFLACIÓN (índice acumulado IPC, para superponer al gráfico) ---
+function parseInflacionCSV(text) {
+    // CSV simple "fecha,valor,indice" generado por inflacion_sync.py.
+    // Guardamos "valor" (variación mensual %) para poder recalcular el
+    // encadenado desde cero con base 100 en el día 1 de cada período.
+    const lines = text.trim().split('\n');
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const partes = line.split(',');
+        const fecha = partes[0];
+        const valor = parseFloat(partes[1]);
+        const ts = new Date(fecha + 'T12:00:00').getTime();
+        if (!isNaN(ts) && !isNaN(valor)) {
+            data.push({ ts, valor });
+        }
+    }
+    data.sort((a, b) => a.ts - b.ts);
+    return data;
+}
+
+async function fetchInflacionData() {
+    try {
+        const response = await fetch(INFLACION_CSV_URL);
+        if (!response.ok) throw new Error('No se pudo cargar el índice de inflación');
+        const text = await response.text();
+        return parseInflacionCSV(text);
+    } catch (error) {
+        console.warn('Inflación no disponible:', error);
+        return [];
+    }
+}
+
+// Recalcula el índice de inflación DESDE CERO con base 100 en el primer
+// día disponible del período visible, encadenando hacia adelante las
+// variaciones mensuales (valor) — no es un reescalado del índice
+// histórico, es un producto encadenado que arranca en 100 en el día 1.
+function calcularInflacionRebasada(filteredData, inflacionArr) {
+    if (!inflacionArr || inflacionArr.length === 0) {
+        return filteredData.map(() => null);
+    }
+
+    // Para cada fecha del período, ubicamos el mes de inflación vigente
+    // (el último mes con fecha <= esa fecha).
+    function indiceDelMes(target) {
+        let lo = 0, hi = inflacionArr.length - 1, res = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            if (inflacionArr[mid].ts <= target) { res = mid; lo = mid + 1; }
+            else hi = mid - 1;
+        }
+        return res;
+    }
+
+    const mesesPorFecha = filteredData.map(d => {
+        const target = new Date(d.fecha_chequeo.split(' ')[0] + 'T12:00:00').getTime();
+        return indiceDelMes(target);
+    });
+
+    const mesBase = mesesPorFecha.find(m => m !== -1);
+    if (mesBase === undefined) return filteredData.map(() => null);
+
+    // Encadenamos las variaciones mensuales hacia adelante desde el mes
+    // base (que vale 100) — recálculo real, no una división.
+    const factorAcumulado = { [mesBase]: 1 };
+    for (let m = mesBase + 1; m < inflacionArr.length; m++) {
+        factorAcumulado[m] = factorAcumulado[m - 1] * (1 + inflacionArr[m].valor / 100);
+    }
+
+    return mesesPorFecha.map(m => (m === -1 || m < mesBase) ? null : 100 * factorAcumulado[m]);
 }
 
 // --- LÓGICA DE CÁLCULOS ---
@@ -223,53 +340,63 @@ function updateUI(stats) {
 }
 
 // --- GRÁFICO ---
-function createChart(data, period = 30) {
+function createChart(data, period = '1m') {
+    currentPeriod = period;
     const canvas = document.getElementById('priceChart');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    
-    let filteredData = data;
-    if (period !== 'all') {
-        // Usar la fecha del último registro disponible (solo fecha, sin hora)
-        const lastDateOnly = data[data.length - 1].fecha_chequeo.split(' ')[0];
-        const lastDate = new Date(lastDateOnly + 'T12:00:00');
-        const cutoff = new Date(lastDate);
-        cutoff.setDate(cutoff.getDate() - period);
-        
-        filteredData = data.filter(d => {
-            const dateOnly = d.fecha_chequeo.split(' ')[0];
-            const fecha = new Date(dateOnly + 'T12:00:00');
-            return fecha >= cutoff;
-        });
-    }
-    
+
+    const filteredData = filterDataByPeriod(data, period);
     const labels = filteredData.map(d => formatDateShort(d.fecha_chequeo));
     const prices = filteredData.map(d => parseFloat(d.precio));
+
+    const datasets = [{
+        label: 'Nafta (ARS)',
+        data: prices,
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.1,
+        yAxisID: 'y'
+    }];
+
+    const scales = {
+        y: {
+            ticks: { callback: (value) => `$${value}` }
+        }
+    };
+
+    if (showInflacion && inflacionData.length > 0) {
+        const indices = calcularInflacionRebasada(filteredData, inflacionData);
+        datasets.push({
+            label: 'Inflación acumulada (índice, base 100)',
+            data: indices,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.08)',
+            borderWidth: 2,
+            borderDash: [5, 3],
+            fill: false,
+            tension: 0.1,
+            pointRadius: 0,
+            yAxisID: 'yInflacion'
+        });
+        scales.yInflacion = {
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            ticks: { callback: (value) => value.toFixed(0) }
+        };
+    }
     
     if (chart) chart.destroy();
     chart = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Precio (ARS)',
-                data: prices,
-                borderColor: '#3b82f6',
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                borderWidth: 2,
-                fill: true,
-                tension: 0.1
-            }]
-        },
+        data: { labels, datasets },
         options: { 
             responsive: true, 
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { 
-                    ticks: { callback: (value) => `$${value}` }
-                }
-            }
+            plugins: { legend: { display: datasets.length > 1 } },
+            scales
         }
     });
 }
@@ -279,9 +406,26 @@ function setupChartControls() {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            const period = btn.dataset.period === 'all' ? 'all' : parseInt(btn.dataset.period);
-            createChart(allData, period);
+            createChart(allData, btn.dataset.period);
         });
+    });
+}
+
+function setupInflacionToggle() {
+    const toggle = document.getElementById('toggle-inflacion');
+    const label = document.getElementById('inflacion-toggle-label');
+    if (!toggle) return;
+
+    if (inflacionData.length === 0) {
+        toggle.disabled = true;
+        if (label) label.classList.add('disabled');
+        return;
+    }
+
+    toggle.addEventListener('change', () => {
+        showInflacion = toggle.checked;
+        if (label) label.classList.toggle('active', showInflacion);
+        createChart(allData, currentPeriod);
     });
 }
 
@@ -292,13 +436,16 @@ async function init() {
     const error = document.getElementById('error');
     
     try {
-        allData = await fetchData();
+        const [naftaData, inflacion] = await Promise.all([fetchData(), fetchInflacionData()]);
+        allData = naftaData;
+        inflacionData = inflacion;
         if (allData.length === 0) throw new Error('No se encontraron datos de la empresa');
         
         const stats = calculateStats(allData);
         updateUI(stats);
-        createChart(allData, 30);
+        createChart(allData, '1m');
         setupChartControls();
+        setupInflacionToggle();
         
         if(loading) loading.style.display = 'none';
         if(mainContent) mainContent.style.display = 'block';

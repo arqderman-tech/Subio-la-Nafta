@@ -106,9 +106,15 @@
                 <div class="card-header">
                     <h2>Evolución del Precio</h2>
                     <div class="chart-controls">
-                        <button class="chart-btn active" data-period="30">30D</button>
-                        <button class="chart-btn" data-period="60">60D</button>
-                        <button class="chart-btn" data-period="all">Todo</button>
+                        <button class="chart-btn active" data-period="1m">1M</button>
+                        <button class="chart-btn" data-period="3m">3M</button>
+                        <button class="chart-btn" data-period="6m">6M</button>
+                        <button class="chart-btn" data-period="ytd">YTD</button>
+                        <button class="chart-btn" data-period="1y">1A</button>
+                        <label class="brent-toggle inflacion-toggle" id="inflacion-toggle-label" for="toggle-inflacion">
+                            <input type="checkbox" id="toggle-inflacion">
+                            <span>📈 Inflación</span>
+                        </label>
                     </div>
                 </div>
                 <div class="chart-container">

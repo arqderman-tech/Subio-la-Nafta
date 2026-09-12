@@ -7,7 +7,7 @@ const BRENT_CSV_URL = 'https://raw.githubusercontent.com/arqderman-tech/Subio-la
 let allData = [];
 let brentData = [];
 let showBrent = false;
-let currentPeriod = 30;
+let currentPeriod = '1m';
 let chart = null;
 
 // --- UTILIDADES ---
@@ -277,31 +277,46 @@ function updateUI(stats) {
 }
 
 // --- GRÁFICO ---
+// Filtra por período relativo a la fecha del último registro.
+// Períodos: '1m', '3m', '6m', 'ytd', '1y'
 function filterDataByPeriod(data, period) {
-    if (period === 'all') {
-        return data;
+    if (!data || data.length === 0) return data;
+
+    const lastDateOnly = data[data.length - 1].fecha_chequeo.split(' ')[0];
+    const lastDate = new Date(lastDateOnly + 'T12:00:00');
+    let cutoff;
+
+    switch (period) {
+        case '1m':
+            cutoff = new Date(lastDate);
+            cutoff.setMonth(cutoff.getMonth() - 1);
+            break;
+        case '3m':
+            cutoff = new Date(lastDate);
+            cutoff.setMonth(cutoff.getMonth() - 3);
+            break;
+        case '6m':
+            cutoff = new Date(lastDate);
+            cutoff.setMonth(cutoff.getMonth() - 6);
+            break;
+        case 'ytd':
+            cutoff = new Date(lastDate.getFullYear(), 0, 1);
+            break;
+        case '1y':
+            cutoff = new Date(lastDate);
+            cutoff.setFullYear(cutoff.getFullYear() - 1);
+            break;
+        default:
+            return data;
     }
-    if (period === 'year') {
-        const currentYear = new Date().getFullYear();
-        return data.filter(d => {
-            const dateOnly = d.fecha_chequeo.split(' ')[0];
-            return new Date(dateOnly + 'T12:00:00').getFullYear() === currentYear;
-        });
-    }
-    if (period === 30) {
-        const lastDateOnly = data[data.length - 1].fecha_chequeo.split(' ')[0];
-        const lastDate = new Date(lastDateOnly + 'T12:00:00');
-        const cutoff = new Date(lastDate);
-        cutoff.setDate(cutoff.getDate() - 30);
-        return data.filter(d => {
-            const dateOnly = d.fecha_chequeo.split(' ')[0];
-            return new Date(dateOnly + 'T12:00:00') >= cutoff;
-        });
-    }
-    return data;
+
+    return data.filter(d => {
+        const dateOnly = d.fecha_chequeo.split(' ')[0];
+        return new Date(dateOnly + 'T12:00:00') >= cutoff;
+    });
 }
 
-function createChart(data, period = 30) {
+function createChart(data, period = '1m') {
     currentPeriod = period;
     const canvas = document.getElementById('priceChart');
     if (!canvas) return;
@@ -367,14 +382,7 @@ function setupChartControls() {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-
-            const raw = btn.dataset.period;
-            let period;
-            if (raw === 'all')       period = 'all';
-            else if (raw === 'year') period = 'year';
-            else                     period = parseInt(raw);
-
-            createChart(allData, period);
+            createChart(allData, btn.dataset.period);
         });
     });
 }
@@ -411,7 +419,7 @@ async function init() {
 
         const stats = calculateStats(allData);
         updateUI(stats);
-        createChart(allData, 30);
+        createChart(allData, '1m');
         setupChartControls();
         setupBrentToggle();
 
