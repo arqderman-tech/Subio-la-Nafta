@@ -343,25 +343,38 @@ function createChart(data, period = '1m') {
         }
     };
 
+    let tooltipCallbacks = {};
     if (showBrent && brentData.length > 0) {
-        const brentPrices = filteredData.map(d => getBrentPriceAt(d.fecha_chequeo, brentData));
-        datasets.push({
-            label: 'Brent (USD/barril)',
-            data: brentPrices,
-            borderColor: '#f59e0b',
-            backgroundColor: 'rgba(245, 158, 11, 0.08)',
-            borderWidth: 2,
-            borderDash: [5, 3],
-            fill: false,
-            tension: 0.1,
-            pointRadius: 0,
-            yAxisID: 'yBrent'
-        });
-        scales.yBrent = {
-            position: 'right',
-            grid: { drawOnChartArea: false },
-            ticks: { callback: (value) => `$${value.toFixed(0)}` }
-        };
+        // Ambas series arrancan en el MISMO punto: el primer día del período
+        // visible con dato de Brent. El Brent se reescala para compartir eje
+        // con la nafta (precio base × Brent / Brent base), así la distancia
+        // entre las curvas es la diferencia real de variación porcentual.
+        const brentReal = filteredData.map(d => getBrentPriceAt(d.fecha_chequeo, brentData));
+        const iBase = brentReal.findIndex(v => v !== null);
+        if (iBase !== -1) {
+            const precioBase = prices[iBase];
+            const brentBase = brentReal[iBase];
+            const brentRebasado = brentReal.map(v => v === null ? null : precioBase * v / brentBase);
+            datasets.push({
+                label: 'Brent (rebasado a la nafta)',
+                data: brentRebasado,
+                borderColor: '#f59e0b',
+                backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                borderWidth: 2,
+                borderDash: [5, 3],
+                fill: false,
+                tension: 0.1,
+                pointRadius: 0,
+                yAxisID: 'y'
+            });
+            // En el tooltip mostramos el valor real del Brent y su variación.
+            tooltipCallbacks.label = (ctx) => {
+                if (ctx.datasetIndex === 0) return `Nafta: USD ${ctx.parsed.y.toFixed(2)}`;
+                const real = brentReal[ctx.dataIndex];
+                const pct = (real / brentBase - 1) * 100;
+                return `Brent: $${real.toFixed(2)}/barril (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)`;
+            };
+        }
     }
 
     if (chart) chart.destroy();
@@ -371,7 +384,7 @@ function createChart(data, period = '1m') {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: datasets.length > 1 } },
+            plugins: { legend: { display: datasets.length > 1 }, tooltip: { callbacks: tooltipCallbacks } },
             scales
         }
     });
