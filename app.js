@@ -368,26 +368,32 @@ function createChart(data, period = '1m') {
     };
 
     if (showInflacion && inflacionData.length > 0) {
+        // Ambas series arrancan en el MISMO punto: el primer día con dato de
+        // inflación dentro del período visible. La nafta se deja en pesos y
+        // la inflación se expresa como "cuánto valdría la nafta si hubiera
+        // seguido al IPC desde ese día" (precio base × índice / 100), así
+        // comparten eje y origen exacto.
         const indices = calcularInflacionRebasada(filteredData, inflacionData);
-        datasets.push({
-            label: 'Inflación acumulada (índice, base 100)',
-            data: indices,
-            borderColor: '#10b981',
-            backgroundColor: 'rgba(16, 185, 129, 0.08)',
-            borderWidth: 2,
-            borderDash: [5, 3],
-            fill: false,
-            tension: 0.1,
-            pointRadius: 0,
-            yAxisID: 'yInflacion'
-        });
-        scales.yInflacion = {
-            position: 'right',
-            grid: { drawOnChartArea: false },
-            ticks: { callback: (value) => value.toFixed(0) }
-        };
+        const iBase = indices.findIndex(v => v !== null);
+        if (iBase !== -1) {
+            const precioBase = prices[iBase];
+            const inflEnPesos = indices.map(v => v === null ? null : precioBase * v / 100);
+            datasets.push({
+                label: 'Nafta si siguiera a la inflación (ARS)',
+                data: inflEnPesos,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                borderWidth: 2,
+                borderDash: [5, 3],
+                fill: false,
+                tension: 0,
+                stepped: 'after',
+                pointRadius: 0,
+                yAxisID: 'y'
+            });
+        }
     }
-    
+
     if (chart) chart.destroy();
     chart = new Chart(ctx, {
         type: 'line',
