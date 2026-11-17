@@ -15,11 +15,25 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Install dependencies
         run: |
           python3 -m venv venv
           ./venv/bin/pip install --upgrade pip
           ./venv/bin/pip install -r requirements.txt
+
+      # ── 1. Procesar datos YPF (si existe el JSON en el runner) ───────────────
+      - name: Procesar estaciones YPF
+        run: |
+          if [ -f "estaciones_ypf_final.json" ]; then
+            echo "📦 Encontrado estaciones_ypf_final.json → ejecutando ypf.py"
+            ./venv/bin/python ypf.py
+          else
+            echo "ℹ️ No se encontró estaciones_ypf_final.json en el workspace."
+            echo "   Se intentará usar el CSV/JSON ya existente (si hay)."
+          fi
+
+      # ── 2. Tracker principal ────────────────────────────────────────────────
       - name: Run monitor
         env:
           X_API_KEY: ${{ secrets.X_API_KEY }}
@@ -30,6 +44,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: ./venv/bin/python nafta_tracker.py
+
+      # ── 3. Commit de cambios ────────────────────────────────────────────────
       - name: Commit and push if changes
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
@@ -38,6 +54,8 @@ jobs:
           git add data/historico_precios_usd.csv
           git add data/historico_brent.csv
           git add data/historico_inflacion.csv
+          # También versionamos el CSV de YPF si se generó
+          git add estaciones_ypf_final_con_tasa.csv 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "No hubo cambios para commitear."
           else
