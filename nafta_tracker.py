@@ -1,6 +1,5 @@
 import pandas as pd
 import requests
-import io
 import os
 import tweepy
 from datetime import datetime, timedelta
@@ -33,24 +32,22 @@ X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN")
 X_ACCESS_SECRET = os.getenv("X_ACCESS_SECRET")
 X_BEARER_TOKEN = os.getenv("X_BEARER_TOKEN")
 
-# --- Configuración de Datos ---
-URL = "https://datos.energia.gob.ar/dataset/1c181390-5045-475e-94dc-410429be4b17/resource/80ac25de-a44a-4445-9215-090cf55cfda5/download/precios-en-surtidor-resolucin-3142016.csv"
+# --- Configuración de Datos (nueva fuente YPF) ---
+# El script ypf.py genera este CSV a partir de estaciones_ypf_final.json
+# En el runner self-hosted el JSON suele estar en el workspace o en un path fijo.
+ARCHIVO_YPF_CSV = "estaciones_ypf_final_con_tasa.csv"
+ARCHIVO_YPF_JSON = "estaciones_ypf_final.json"  # fallback
 ARCHIVO_HISTORICO = "data/historico_precios.csv"
 
-# --- CONFIGURACIÓN DE BÚSQUEDA ---
-BUSCAR_PRODUCTO = 'Nafta (súper) entre 92 y 95 Ron'
-
-# UNITEC suspendida temporalmente — no está actualizando datos en la fuente oficial
-# BUSCAR_RAZON_SOCIAL = 'UNITECPROCOM SA'
-
-# Nueva estación activa: GAS IMPULSO S.A. — Ruta 25 Nro. 619, Pilar, Buenos Aires
-# idempresa: 1519 | turno: Diurno
-BUSCAR_RAZON_SOCIAL = 'GAS IMPULSO'
-BUSCAR_IDEMPRESA = '1519'
+# Estación objetivo (GAS IMPULSO SA – Pilar)
+BUSCAR_APIES = "00322"
+BUSCAR_RAZON_SOCIAL = "GAS IMPULSO"
+PRODUCTO_CLAVE = "NS"           # Nafta Súper → pvp_NS
 
 # --- Claves de Telegram ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
 
 def publicar_en_x(texto_principal, texto_mensual=None):
     """Publica el reporte en X (Twitter)."""
@@ -70,6 +67,7 @@ def publicar_en_x(texto_principal, texto_mensual=None):
     except Exception as e:
         print(f"❌ Error en X: {e}")
 
+
 def enviar_telegram(mensaje):
     """Envía notificación por Telegram."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -78,50 +76,75 @@ def enviar_telegram(mensaje):
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje}
     try:
         requests.post(url_tg, json=payload, timeout=10)
-    except:
+    except Exception:
         pass
+
+
+def cargar_precio_ypf():
+    """
+    Carga el precio de Nafta Súper (pvp_NS) de la estación 00322
+    desde el CSV generado por ypf.py (o del JSON como fallback).
+    Devuelve: (precio, nombre_empresa, direccion) o None si falla.
+    """
+    # 1. Intentar CSV
+    if os.path.exists(ARCHIVO_YPF_CSV):
+        try:
+            df = pd.read_csv(ARCHIVO_YPF_CSV, dtype=str)
+            # Normalizar apies (puede venir como 322 o 00322)
+            df["apies"] = df["apies"].astype(str).str.strip().str.zfill(5)
+            fila = df[df["apies"] == BUSCAR_APIES.zfill(5)]
+
+            if not fila.empty:
+                row = fila.iloc[0]
+                precio = float(row["pvp_NS"])
+                empresa = row.get("operador", BUSCAR_RAZON_SOCIAL)
+                direccion = row.get("direccion", "")
+                print(f"✅ Precio leído desde CSV: ${precio:,.2f} ({empresa})")
+                return precio, empresa, direccion
+        except Exception as e:
+            print(f"⚠️ Error leyendo CSV YPF: {e}")
+
+    # 2. Fallback al JSON
+    if os.path.exists(ARCHIVO_YPF_JSON):
+        try:
+            import json
+            with open(ARCHIVO_YPF_JSON, encoding="utf-8") as f:
+                data = json.load(f)
+
+            for est in data:
+                apies = str(est.get("apies", "")).strip().zfill(5)
+                if apies == BUSCAR_APIES.zfill(5):
+                    for p in est.get("productos", []):
+                        if p.get("descripcion") == PRODUCTO_CLAVE:
+                            precio = float(p.get("pvp"))
+                            empresa = est.get("ubicacion", {}).get("operador", BUSCAR_RAZON_SOCIAL)
+                            direccion = est.get("ubicacion", {}).get("direccion", "")
+                            print(f"✅ Precio leído desde JSON: ${precio:,.2f} ({empresa})")
+                            return precio, empresa, direccion
+        except Exception as e:
+            print(f"⚠️ Error leyendo JSON YPF: {e}")
+
+    return None
+
 
 def main():
     """Función principal del script."""
     print(f"--- Iniciando Verificación: {datetime.now()} ---")
-    
+
     # Crear directorio data si no existe
     os.makedirs("data", exist_ok=True)
-    
-    try:
-        response = requests.get(URL, timeout=30)
-        df = pd.read_csv(io.BytesIO(response.content), decimal=',', encoding='utf-8')
-    except Exception as e:
-        print(f"Error descarga/lectura: {e}")
+
+    # ── Obtener precio desde fuente YPF ─────────────────────────────────────
+    resultado = cargar_precio_ypf()
+    if resultado is None:
+        print(f"❌ No se encontró la estación {BUSCAR_APIES} ({BUSCAR_RAZON_SOCIAL}) "
+              f"en {ARCHIVO_YPF_CSV} ni en {ARCHIVO_YPF_JSON}")
+        print("   Asegurate de haber corrido primero ypf.py para generar los archivos.")
         return
 
-    df['producto'] = df['producto'].astype(str).str.strip()
-    df['empresa'] = df['empresa'].astype(str).str.strip()
+    precio_hoy, empresa_nombre, direccion = resultado
+    fecha_vigencia_precio = datetime.now().strftime("%d/%m/%Y %H:%M")  # la fuente YPF no trae fecha de vigencia
 
-    # Filtro por idempresa (más robusto) + producto. Fallback a nombre si no existe la columna.
-    if 'idempresa' in df.columns:
-        df_filtrado = df[
-            (df['producto'].str.contains(BUSCAR_PRODUCTO, case=False, na=False, regex=False)) &
-            (df['idempresa'].astype(str).str.strip() == BUSCAR_IDEMPRESA)
-        ].copy()
-    else:
-        df_filtrado = df[
-            (df['producto'].str.contains(BUSCAR_PRODUCTO, case=False, na=False, regex=False)) &
-            (df['empresa'].str.contains(BUSCAR_RAZON_SOCIAL, case=False, na=False, regex=False))
-        ].copy()
-    
-    if df_filtrado.empty:
-        print(f"❌ No se encontraron datos para: {BUSCAR_RAZON_SOCIAL}")
-        return
-
-    df_filtrado['fecha_vigencia'] = pd.to_datetime(df_filtrado['fecha_vigencia'], errors='coerce')
-    df_filtrado = df_filtrado.sort_values(by='fecha_vigencia', ascending=False)
-    
-    reg_actual = df_filtrado.iloc[0]
-    precio_hoy = float(reg_actual['precio'])
-    empresa_nombre = reg_actual['empresa']
-    fecha_vigencia_precio = reg_actual['fecha_vigencia'].strftime('%d/%m/%Y %H:%M')
-    
     # Fecha de HOY para el tracking
     fecha_hoy = datetime.now().date()
     fecha_hoy_dt = pd.to_datetime(fecha_hoy)
@@ -131,105 +154,149 @@ def main():
 
     if os.path.exists(ARCHIVO_HISTORICO):
         df_hist = pd.read_csv(ARCHIVO_HISTORICO)
-        df_hist['fecha_vigencia'] = pd.to_datetime(df_hist['fecha_vigencia'], errors='coerce')
-        
-        # Asegurar columna fecha_chequeo
-        if 'fecha_chequeo' not in df_hist.columns:
-            df_hist['fecha_chequeo'] = df_hist['fecha_vigencia']
+
+        # Asegurar columnas mínimas
+        if "fecha_chequeo" not in df_hist.columns:
+            if "fecha_vigencia" in df_hist.columns:
+                df_hist["fecha_chequeo"] = df_hist["fecha_vigencia"]
+            else:
+                df_hist["fecha_chequeo"] = pd.NaT
             df_hist.to_csv(ARCHIVO_HISTORICO, index=False)
             print("✅ Columna fecha_chequeo inicializada")
-        else:
-            df_hist['fecha_chequeo'] = pd.to_datetime(df_hist['fecha_chequeo'], errors='coerce')
-        
-        # Verificar duplicados de hoy
-        ya_chequeado_hoy = (df_hist['fecha_chequeo'].dt.date == fecha_hoy).any()
-        
+
+        df_hist["fecha_chequeo"] = pd.to_datetime(df_hist["fecha_chequeo"], errors="coerce")
+
+        # Verificar si ya se chequeó hoy
+        ya_chequeado_hoy = (df_hist["fecha_chequeo"].dt.date == fecha_hoy).any()
+
         if ya_chequeado_hoy:
             print(f"ℹ️ Ya se realizó un chequeo hoy ({fecha_hoy}). Saltando guardado.")
         else:
-            ultimo_precio = float(df_hist['precio'].iloc[-1])
-            
+            ultimo_precio = float(df_hist["precio"].iloc[-1])
+
             # CALCULAR VARIACIÓN RESPECTO AL DÍA ANTERIOR
             diff = precio_hoy - ultimo_precio
             variacion_pct = (diff / ultimo_precio) * 100 if ultimo_precio != 0 else 0.0
-            
+
             # 1. REPORTE DIARIO
             if precio_hoy != ultimo_precio:
                 emoji = "🔺" if diff > 0 else "🔻"
-                informe_diario = (f"{emoji} CAMBIO DE PRECIO DETECTADO\n"
-                                  f"--------------------------\n"
-                                  f"⛽ Nafta Súper en YPF\n\n"
-                                  f"Precio anterior: ${ultimo_precio:,.2f}\n"
-                                  f"Precio nuevo: ${precio_hoy:,.2f}\n"
-                                  f"Variación: {emoji} ${diff:,.2f}\n\n"
-                                  f"Vigencia oficial: {fecha_vigencia_precio}")
+                informe_diario = (
+                    f"{emoji} CAMBIO DE PRECIO DETECTADO\n"
+                    f"--------------------------\n"
+                    f"⛽ Nafta Súper en YPF\n"
+                    f"Estación: {empresa_nombre}\n\n"
+                    f"Precio anterior: ${ultimo_precio:,.2f}\n"
+                    f"Precio nuevo: ${precio_hoy:,.2f}\n"
+                    f"Variación: {emoji} ${diff:,.2f} ({variacion_pct:+.2f}%)\n\n"
+                    f"Chequeo: {fecha_vigencia_precio}"
+                )
             else:
-                informe_diario = (f"✅ SIN CAMBIOS EN EL PRECIO\n"
-                                  f"--------------------------\n"
-                                  f"⛽ Nafta Súper en YPF\n\n"
-                                  f"Precio actual: ${precio_hoy:,.2f}\n"
-                                  f"Estado: Estable\n"
-                                  f"Vigencia del precio: {fecha_vigencia_precio}\n"
-                                  f"Chequeo: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-            
-            # Guardar nuevo registro con %_variacion calculada
-            nueva_fila = df_filtrado.iloc[[0]].copy()
-            nueva_fila['%_variacion'] = round(variacion_pct, 2)
-            nueva_fila['fecha_chequeo'] = str(fecha_hoy)
-            nueva_fila.to_csv(ARCHIVO_HISTORICO, mode='a', index=False, header=False)
+                informe_diario = (
+                    f"✅ SIN CAMBIOS EN EL PRECIO\n"
+                    f"--------------------------\n"
+                    f"⛽ Nafta Súper en YPF\n"
+                    f"Estación: {empresa_nombre}\n\n"
+                    f"Precio actual: ${precio_hoy:,.2f}\n"
+                    f"Estado: Estable\n"
+                    f"Chequeo: {fecha_vigencia_precio}"
+                )
+
+            # Guardar nuevo registro alineado con el header existente
+            # (usd_sync solo necesita fecha_chequeo + precio; el resto es informativo)
+            columnas_hist = list(df_hist.columns)
+            nueva = {c: "" for c in columnas_hist}
+            nueva["fecha_chequeo"] = str(fecha_hoy)
+            nueva["fecha_vigencia"] = fecha_vigencia_precio
+            nueva["precio"] = precio_hoy
+            if "%_variacion" in nueva:
+                nueva["%_variacion"] = round(variacion_pct, 2)
+            if "empresa" in nueva:
+                nueva["empresa"] = empresa_nombre
+            if "direccion" in nueva:
+                nueva["direccion"] = direccion
+            if "producto" in nueva:
+                nueva["producto"] = "Nafta (súper) entre 92 y 95 Ron"
+            if "empresabandera" in nueva:
+                nueva["empresabandera"] = "YPF"
+            if "idempresa" in nueva:
+                nueva["idempresa"] = "1519"
+            if "apies" in columnas_hist:
+                nueva["apies"] = BUSCAR_APIES
+
+            nueva_fila = pd.DataFrame([nueva])
+            # Reordenar exactamente como el header actual
+            nueva_fila = nueva_fila.reindex(columns=columnas_hist)
+            nueva_fila.to_csv(ARCHIVO_HISTORICO, mode="a", index=False, header=False)
             print(f"✅ Registro guardado: ${precio_hoy} (variación: {variacion_pct:.2f}%)")
 
-        # --- 2. COMPARATIVA MENSUAL (Lógica Híbrida) ---
+        # --- 2. COMPARATIVA MENSUAL ---
         fecha_hace_30_dias = fecha_hoy_dt - timedelta(days=30)
-        
-        # Crear columna de comparación unificada
-        df_hist['fecha_comparacion'] = df_hist['fecha_chequeo'].fillna(df_hist['fecha_vigencia'])
-        df_hist['fecha_comparacion'] = pd.to_datetime(df_hist['fecha_comparacion'])
 
-        # Filtrar registros de hace 30 días o antes
-        df_mes = df_hist[df_hist['fecha_comparacion'] <= fecha_hace_30_dias]
+        # Crear columna de comparación unificada
+        if "fecha_comparacion" not in df_hist.columns:
+            df_hist["fecha_comparacion"] = df_hist["fecha_chequeo"].fillna(
+                pd.to_datetime(df_hist.get("fecha_vigencia"), errors="coerce")
+            )
+        df_hist["fecha_comparacion"] = pd.to_datetime(df_hist["fecha_comparacion"], errors="coerce")
+
+        df_mes = df_hist[df_hist["fecha_comparacion"] <= fecha_hace_30_dias]
 
         if not df_mes.empty:
             reg_mes = df_mes.iloc[-1]
-            precio_mes = float(reg_mes['precio'])
-            fecha_mes = reg_mes['fecha_comparacion']
-            
+            precio_mes = float(reg_mes["precio"])
             diff_m = precio_hoy - precio_mes
-            pct_m = (diff_m / precio_mes) * 100
+            pct_m = (diff_m / precio_mes) * 100 if precio_mes != 0 else 0.0
             e_m = "🔺" if diff_m > 0 else "🔻"
-            
-            informe_mensual = (f"📊 COMPARATIVA MENSUAL\n"
-                               f"--------------------------\n"
-                               f"⛽ Precio hace 30 días: ${precio_mes:,.2f}\n"
-                               f"Variación nominal: {e_m} ${diff_m:,.2f}\n"
-                               f"Variación porcentual: {e_m} {pct_m:.2f}%")
-            
-            print(f"📊 Comparativa mensual calculada.")
+
+            informe_mensual = (
+                f"📊 COMPARATIVA MENSUAL\n"
+                f"--------------------------\n"
+                f"⛽ Precio hace 30 días: ${precio_mes:,.2f}\n"
+                f"Variación nominal: {e_m} ${diff_m:,.2f}\n"
+                f"Variación porcentual: {e_m} {pct_m:.2f}%"
+            )
+            print("📊 Comparativa mensual calculada.")
         else:
-            # Usar registro más antiguo si tiene más de 0 días
+            # Usar el registro más antiguo si hay datos
             if len(df_hist) > 0:
                 reg_mes = df_hist.iloc[0]
-                precio_mes = float(reg_mes['precio'])
-                fecha_mes = pd.to_datetime(reg_mes['fecha_comparacion'])
-                dias = (fecha_hoy_dt - fecha_mes).days
-                
+                precio_mes = float(reg_mes["precio"])
+                fecha_mes = pd.to_datetime(reg_mes["fecha_comparacion"], errors="coerce")
+                dias = (fecha_hoy_dt - fecha_mes).days if pd.notna(fecha_mes) else 0
+
                 if dias > 0:
                     diff_m = precio_hoy - precio_mes
-                    pct_m = (diff_m / precio_mes) * 100
+                    pct_m = (diff_m / precio_mes) * 100 if precio_mes != 0 else 0.0
                     e_m = "🔺" if diff_m > 0 else "🔻"
-                    informe_mensual = (f"📊 COMPARATIVA MENSUAL\n"
-                                       f"--------------------------\n"
-                                       f"⛽ Precio hace {dias} días: ${precio_mes:,.2f}\n"
-                                       f"Variación nominal: {e_m} ${diff_m:,.2f}\n"
-                                       f"Variación porcentual: {e_m} {pct_m:.2f}%")
+                    informe_mensual = (
+                        f"📊 COMPARATIVA MENSUAL\n"
+                        f"--------------------------\n"
+                        f"⛽ Precio hace {dias} días: ${precio_mes:,.2f}\n"
+                        f"Variación nominal: {e_m} ${diff_m:,.2f}\n"
+                        f"Variación porcentual: {e_m} {pct_m:.2f}%"
+                    )
     else:
-        # Primera ejecución
-        nueva_fila = df_filtrado.iloc[[0]].copy()
-        nueva_fila['%_variacion'] = 0.0
-        nueva_fila['fecha_chequeo'] = str(fecha_hoy)
+        # Primera ejecución (archivo no existe)
+        nueva_fila = pd.DataFrame([{
+            "fecha_chequeo": str(fecha_hoy),
+            "fecha_vigencia": fecha_vigencia_precio,
+            "precio": precio_hoy,
+            "%_variacion": 0.0,
+            "empresa": empresa_nombre,
+            "apies": BUSCAR_APIES,
+            "producto": "Nafta (súper) entre 92 y 95 Ron",
+            "direccion": direccion,
+            "empresabandera": "YPF",
+            "idempresa": "1519",
+        }])
         nueva_fila.to_csv(ARCHIVO_HISTORICO, index=False)
-        informe_diario = f"🚀 INICIO DE SEGUIMIENTO\n⛽ Nafta Súper en {empresa_nombre}\nPrecio inicial: ${precio_hoy:,.2f}"
-        print(f"✅ Archivo histórico creado")
+        informe_diario = (
+            f"🚀 INICIO DE SEGUIMIENTO\n"
+            f"⛽ Nafta Súper en {empresa_nombre}\n"
+            f"Precio inicial: ${precio_hoy:,.2f}"
+        )
+        print("✅ Archivo histórico creado")
 
     # Envío de reportes
     if informe_diario:
@@ -264,6 +331,7 @@ def main():
         print("⚠️ inflacion_sync.py no encontrado — el índice de inflación no se actualizó.")
 
     print(f"--- Finalizado: {datetime.now()} ---")
+
 
 if __name__ == "__main__":
     main()
